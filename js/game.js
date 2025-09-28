@@ -18,13 +18,16 @@ class Game {
                 xp: 0,
                 xpToNext: CONFIG.progression.xpBase,
                 pickupRadius: CONFIG.player.pickupRadius,
-                magnetRadius: CONFIG.player.magnetRadius
+                magnetRadius: CONFIG.player.magnetRadius,
+                weapon: WeaponFactory.createWeapon('basic')
             },
             enemies: [],
             projectiles: [],
+            enemyProjectiles: [],
             pickups: [],
             startTime: Date.now(),
             level: 1,
+            waveNumber: 1,
             enemySpawnRate: CONFIG.enemies.spawnRate,
             lastEnemySpawn: 0,
             keys: {},
@@ -54,6 +57,7 @@ class Game {
         );
         camera.setTarget(BABYLON.Vector3.Zero());
         camera.rotation.x = CONFIG.world.cameraAngle;
+        camera.fov = 1.2; // Wider field of view for better visibility
     }
     
     setupLights() {
@@ -144,37 +148,33 @@ class Game {
     }
     
     createEnemy() {
-        const enemy = BABYLON.MeshBuilder.CreateSphere(
-            "enemy", 
-            {diameter: CONFIG.enemies.basic.size}, 
-            this.scene
-        );
+        const enemyType = EnemyFactory.getRandomEnemyType(this.state.waveNumber);
+        const enemy = EnemyFactory.createEnemy(enemyType, this.scene);
         
         // Spawn position
         const angle = Math.random() * Math.PI * 2;
         const distance = CONFIG.enemies.spawnDistance + 
                         Math.random() * CONFIG.enemies.spawnDistanceVariance;
-        enemy.position.x = this.state.playerMesh.position.x + Math.cos(angle) * distance;
-        enemy.position.z = this.state.playerMesh.position.z + Math.sin(angle) * distance;
-        enemy.position.y = 0.4;
-        
-        const enemyMat = new BABYLON.StandardMaterial("enemyMat", this.scene);
-        enemyMat.diffuseColor = CONFIG.enemies.basic.color;
-        enemyMat.emissiveColor = CONFIG.enemies.basic.emissive;
-        enemy.material = enemyMat;
-        
-        enemy.health = CONFIG.enemies.basic.health;
-        enemy.speed = CONFIG.enemies.basic.speed + 
-                     Math.random() * CONFIG.enemies.basic.speedVariance;
-        enemy.damage = CONFIG.enemies.basic.damage;
+        enemy.mesh.position.x = this.state.playerMesh.position.x + Math.cos(angle) * distance;
+        enemy.mesh.position.z = this.state.playerMesh.position.z + Math.sin(angle) * distance;
+        enemy.mesh.position.y = 0.4;
         
         this.state.enemies.push(enemy);
+        
+        // Check for boss spawn
+        if (EnemyFactory.shouldSpawnBoss(this.state.waveNumber)) {
+            const boss = EnemyFactory.createEnemy('boss', this.scene);
+            boss.mesh.position.x = this.state.playerMesh.position.x + Math.cos(angle + Math.PI) * (distance + 5);
+            boss.mesh.position.z = this.state.playerMesh.position.z + Math.sin(angle + Math.PI) * (distance + 5);
+            boss.mesh.position.y = 1;
+            this.state.enemies.push(boss);
+        }
     }
     
-    createProjectile(from, to) {
+    createProjectile(from, to, weapon) {
         const projectile = BABYLON.MeshBuilder.CreateSphere(
             "projectile", 
-            {diameter: CONFIG.projectiles.basic.size}, 
+            {diameter: weapon.projectileConfig.size || CONFIG.projectiles.basic.size}, 
             this.scene
         );
         
@@ -182,16 +182,25 @@ class Game {
         projectile.position.y = 0.8;
         
         const projectileMat = new BABYLON.StandardMaterial("projectileMat", this.scene);
-        projectileMat.diffuseColor = CONFIG.projectiles.basic.color;
-        projectileMat.emissiveColor = CONFIG.projectiles.basic.emissive;
+        projectileMat.diffuseColor = weapon.projectileConfig.color || CONFIG.projectiles.basic.color;
+        projectileMat.emissiveColor = weapon.projectileConfig.emissive || CONFIG.projectiles.basic.emissive;
         projectile.material = projectileMat;
         
         const direction = to.subtract(from).normalize();
-        projectile.velocity = direction.scale(CONFIG.projectiles.basic.speed);
-        projectile.damage = this.state.player.damage;
-        projectile.lifetime = CONFIG.projectiles.basic.lifetime;
+        projectile.velocity = direction.scale(weapon.projectileConfig.speed || CONFIG.projectiles.basic.speed);
+        projectile.damage = weapon.damage;
+        projectile.lifetime = weapon.projectileConfig.lifetime || CONFIG.projectiles.basic.lifetime;
+        projectile.weaponRef = weapon;
         
         this.state.projectiles.push(projectile);
+    }
+    
+    createExplosiveProjectile(from, to, weapon) {
+        this.createProjectile(from, to, weapon);
+        // The last projectile is the explosive one
+        const projectile = this.state.projectiles[this.state.projectiles.length - 1];
+        projectile.isExplosive = true;
+        projectile.explosionRadius = weapon.explosionRadius;
     }
     
     createPickup(position, type = 'xp') {
@@ -223,7 +232,7 @@ class Game {
         this.state.enemies.forEach(enemy => {
             const dist = BABYLON.Vector3.Distance(
                 this.state.playerMesh.position, 
-                enemy.position
+                enemy.getPosition()
             );
             if (dist < minDist && dist <= this.state.player.attackRange) {
                 minDist = dist;
@@ -244,10 +253,10 @@ class Game {
         
         if (moveVector.length() > 0) {
             moveVector.normalize();
-            this.state.playerMesh.position.addInPlace(
+            const newPosition = this.state.playerMesh.position.add(
                 moveVector.scale(this.state.player.speed)
             );
-
+            
             // Enforce boundary constraints
             const boundary = CONFIG.world.groundSize / 2 - 1; // Leave 1 unit buffer
             newPosition.x = Math.max(-boundary, Math.min(boundary, newPosition.x));
@@ -268,24 +277,37 @@ class Game {
     }
     
     updateEnemies() {
+        const currentTime = Date.now();
+        
         this.state.enemies = this.state.enemies.filter(enemy => {
-            // Move towards player
-            const direction = this.state.playerMesh.position.subtract(enemy.position);
-            direction.y = 0;
-            direction.normalize();
-            enemy.position.addInPlace(direction.scale(enemy.speed));
+            // Update enemy AI
+            enemy.update(this, currentTime);
             
             // Check collision with player
             const distToPlayer = BABYLON.Vector3.Distance(
-                enemy.position, 
+                enemy.getPosition(), 
                 this.state.playerMesh.position
             );
             
             if (distToPlayer < 1) {
                 this.state.player.health -= enemy.damage;
                 this.updateHealthBar();
-                this.createPickup(enemy.position, 'xp');
-                enemy.dispose();
+                
+                // Create XP pickup
+                this.createPickup(enemy.getPosition(), 'xp');
+                for (let i = 0; i < enemy.xpValue; i++) {
+                    this.createPickup(enemy.getPosition(), 'xp');
+                }
+                
+                // Handle explosive enemies
+                if (enemy instanceof ExplosiveEnemy) {
+                    const explosion = enemy.explode();
+                    if (explosion) {
+                        this.handleExplosion(explosion);
+                    }
+                }
+                
+                enemy.destroy();
                 return false;
             }
             
@@ -293,7 +315,40 @@ class Game {
         });
     }
     
+    handleExplosion(explosion) {
+        // Damage player if in range
+        const distToPlayer = BABYLON.Vector3.Distance(
+            explosion.position,
+            this.state.playerMesh.position
+        );
+        
+        if (distToPlayer <= explosion.radius) {
+            this.state.player.health -= explosion.damage;
+            this.updateHealthBar();
+        }
+        
+        // Damage other enemies
+        this.state.enemies.forEach(enemy => {
+            const distToEnemy = BABYLON.Vector3.Distance(
+                explosion.position,
+                enemy.getPosition()
+            );
+            
+            if (distToEnemy <= explosion.radius) {
+                const isDead = enemy.takeDamage(explosion.damage);
+                if (isDead) {
+                    this.createPickup(enemy.getPosition(), 'xp');
+                    for (let i = 0; i < enemy.xpValue; i++) {
+                        this.createPickup(enemy.getPosition(), 'xp');
+                    }
+                    enemy.destroy();
+                }
+            }
+        });
+    }
+    
     updateProjectiles() {
+        // Update player projectiles
         this.state.projectiles = this.state.projectiles.filter(projectile => {
             projectile.position.addInPlace(projectile.velocity);
             projectile.lifetime--;
@@ -301,23 +356,87 @@ class Game {
             // Check collision with enemies
             for (let i = this.state.enemies.length - 1; i >= 0; i--) {
                 const enemy = this.state.enemies[i];
-                const dist = BABYLON.Vector3.Distance(projectile.position, enemy.position);
+                const dist = BABYLON.Vector3.Distance(projectile.position, enemy.getPosition());
                 
                 if (dist < 0.8) {
-                    enemy.health -= projectile.damage;
+                    const isDead = enemy.takeDamage(projectile.damage);
                     
-                    if (enemy.health <= 0) {
-                        this.createPickup(enemy.position, 'xp');
-                        if (Math.random() < CONFIG.pickups.health.dropChance) {
-                            this.createPickup(enemy.position, 'health');
+                    if (isDead) {
+                        // Create XP pickups
+                        for (let j = 0; j < enemy.xpValue; j++) {
+                            this.createPickup(enemy.getPosition(), 'xp');
                         }
-                        enemy.dispose();
+                        
+                        // Health drop chance
+                        if (Math.random() < CONFIG.pickups.health.dropChance) {
+                            this.createPickup(enemy.getPosition(), 'health');
+                        }
+                        
+                        // Handle explosive enemies
+                        if (enemy instanceof ExplosiveEnemy) {
+                            const explosion = enemy.explode();
+                            if (explosion) {
+                                this.handleExplosion(explosion);
+                            }
+                        }
+                        
+                        enemy.destroy();
                         this.state.enemies.splice(i, 1);
+                    }
+                    
+                    // Handle explosive projectiles
+                    if (projectile.isExplosive) {
+                        this.createProjectileExplosion(projectile);
                     }
                     
                     projectile.dispose();
                     return false;
                 }
+            }
+            
+            // Handle explosive projectiles at end of lifetime
+            if (projectile.lifetime <= 0) {
+                if (projectile.isExplosive) {
+                    this.createProjectileExplosion(projectile);
+                }
+                projectile.dispose();
+                return false;
+            }
+            
+            return true;
+        });
+        
+        // Update enemy projectiles
+        this.updateEnemyProjectiles();
+    }
+    
+    createProjectileExplosion(projectile) {
+        const explosion = {
+            position: projectile.position.clone(),
+            radius: projectile.explosionRadius,
+            damage: projectile.damage
+        };
+        this.handleExplosion(explosion);
+    }
+    
+    updateEnemyProjectiles() {
+        if (!this.state.enemyProjectiles) return;
+        
+        this.state.enemyProjectiles = this.state.enemyProjectiles.filter(projectile => {
+            projectile.position.addInPlace(projectile.velocity);
+            projectile.lifetime--;
+            
+            // Check collision with player
+            const distToPlayer = BABYLON.Vector3.Distance(
+                projectile.position, 
+                this.state.playerMesh.position
+            );
+            
+            if (distToPlayer < 0.8) {
+                this.state.player.health -= projectile.damage;
+                this.updateHealthBar();
+                projectile.dispose();
+                return false;
             }
             
             if (projectile.lifetime <= 0) {
@@ -406,6 +525,9 @@ class Game {
             this.state.player.maxHealth
         );
         
+        // Upgrade weapon
+        this.state.player.weapon.upgrade();
+        
         this.updateHealthBar();
         
         // Add level up animation
@@ -427,15 +549,21 @@ class Game {
                     CONFIG.enemies.minSpawnRate,
                     this.state.enemySpawnRate - CONFIG.enemies.spawnRateReduction
                 );
+                
+                // Increment wave number for enemy variety
+                if (this.state.enemySpawnRate <= CONFIG.enemies.minSpawnRate) {
+                    this.state.waveNumber++;
+                }
             }
         }
     }
     
     autoAttack(currentTime) {
-        if (currentTime - this.state.player.lastAttack > this.state.player.attackSpeed) {
-            const target = this.findNearestEnemy();
-            if (target) {
-                this.createProjectile(this.state.playerMesh.position, target.position);
+        const weapon = this.state.player.weapon;
+        
+        if (weapon.canAttack(currentTime, this.state.player.lastAttack)) {
+            const attacked = weapon.attack(this, this.state.playerMesh.position, this.state.enemies);
+            if (attacked) {
                 this.state.player.lastAttack = currentTime;
             }
         }
@@ -446,6 +574,18 @@ class Game {
             this.state.player.health / this.state.player.maxHealth * 100
         );
         document.getElementById('healthFill').style.width = percentage + '%';
+    }
+    
+    updateWeaponCooldown() {
+        const currentTime = Date.now();
+        const timeSinceLastAttack = currentTime - this.state.player.lastAttack;
+        const cooldownProgress = Math.min(1, timeSinceLastAttack / this.state.player.weapon.attackSpeed);
+        const percentage = cooldownProgress * 100;
+        
+        const cooldownFill = document.getElementById('weaponCooldownFill');
+        if (cooldownFill) {
+            cooldownFill.style.width = percentage + '%';
+        }
     }
     
     updateStats() {
@@ -461,6 +601,13 @@ class Game {
         
         document.getElementById('xp').textContent = 
             `XP: ${this.state.player.xp} / ${this.state.player.xpToNext}`;
+            
+        // Update weapon display
+        const weaponElement = document.getElementById('weaponInfo');
+        if (weaponElement) {
+            const weapon = this.state.player.weapon;
+            weaponElement.textContent = `${weapon.name} Lv.${weapon.level}`;
+        }
     }
     
     formatTime(ms) {
@@ -489,6 +636,7 @@ class Game {
             this.updateProjectiles();
             this.updatePickups();
             this.updateStats();
+            this.updateWeaponCooldown();
             this.checkGameOver();
         });
     }
