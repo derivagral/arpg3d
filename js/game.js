@@ -247,6 +247,13 @@ class Game {
             this.state.playerMesh.position.addInPlace(
                 moveVector.scale(this.state.player.speed)
             );
+
+            // Enforce boundary constraints
+            const boundary = CONFIG.world.groundSize / 2 - 1; // Leave 1 unit buffer
+            newPosition.x = Math.max(-boundary, Math.min(boundary, newPosition.x));
+            newPosition.z = Math.max(-boundary, Math.min(boundary, newPosition.z));
+            
+            this.state.playerMesh.position = newPosition;
             
             // Rotate to face movement direction
             if (moveVector.length() > 0.1) {
