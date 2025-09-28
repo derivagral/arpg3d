@@ -3,34 +3,58 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ARPG3D - Vampire Survivors Style</title>
+    <title>ARPG3D - Enhanced Version</title>
     <link rel="stylesheet" href="css/main.css">
 </head>
 <body>
     <canvas id="renderCanvas"></canvas>
     
+    <!-- Main UI -->
     <div id="ui">
         <div id="health">
             <div class="label">Health</div>
             <div id="healthBar">
                 <div id="healthFill"></div>
             </div>
-        </div>
-        
-        <div id="weaponCooldown">
-            <div class="label">Weapon</div>
-            <div id="weaponCooldownBar">
-                <div id="weaponCooldownFill"></div>
+            <div class="label cooldown-label">Attack Cooldown</div>
+            <div id="cooldownBar">
+                <div id="cooldownFill"></div>
             </div>
         </div>
         
         <div id="stats">
+            <div id="wave">Wave: 1</div>
             <div id="enemyCount">Enemies: 0</div>
             <div id="timer">Time: 0:00</div>
             <div id="level">Level: 1</div>
             <div id="xp">XP: 0 / 10</div>
-            <div id="weaponInfo">Basic Blaster Lv.1</div>
         </div>
+    </div>
+
+    <!-- Wave Indicator -->
+    <div id="waveIndicator">
+        <h2>Wave <span id="waveNumber">1</span></h2>
+        <p id="waveMessage">Prepare yourself!</p>
+    </div>
+
+    <!-- Pause Overlay -->
+    <div id="pauseOverlay">
+        <div class="message">
+            <h1>PAUSED</h1>
+            <p>Press ESC or P to resume</p>
+            <div class="controls-hint">
+                <h3>Controls:</h3>
+                <p>WASD or Arrow Keys - Move</p>
+                <p>Auto-attacks nearest enemy</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Upgrade Menu -->
+    <div id="upgradeMenu">
+        <h2>Choose an Upgrade</h2>
+        <div id="upgradeOptions"></div>
+        <div class="upgrade-hint">Click to select</div>
     </div>
 
     <!-- Babylon.js -->
@@ -38,8 +62,7 @@
     
     <!-- Game Scripts -->
     <script src="js/config.js"></script>
-    <script src="js/weapons.js"></script>
-    <script src="js/enemies.js"></script>
+    <script src="js/ui.js"></script>
     <script src="js/game.js"></script>
     <script src="js/main.js"></script>
 </body>

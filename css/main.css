@@ -30,7 +30,7 @@ body {
     user-select: none;
 }
 
-/* Health Bar */
+/* Health and Cooldown Bars */
 #health {
     background: rgba(0,0,0,0.6);
     padding: 12px;
@@ -48,7 +48,12 @@ body {
     opacity: 0.9;
 }
 
-#healthBar {
+#health .cooldown-label {
+    margin-top: 10px;
+    font-size: 12px;
+}
+
+#healthBar, #cooldownBar {
     width: 250px;
     height: 24px;
     background: linear-gradient(to bottom, #1a1a1a, #2a2a2a);
@@ -56,12 +61,18 @@ body {
     border-radius: 4px;
     overflow: hidden;
     position: relative;
+    margin-bottom: 8px;
+}
+
+#cooldownBar {
+    height: 16px;
+    margin-bottom: 0;
 }
 
 #healthFill {
     height: 100%;
     background: linear-gradient(to right, #ff3333, #ff6666);
-    transition: width 0.3s ease;
+    transition: width 0.3s ease, background 0.3s ease;
     box-shadow: inset 0 -2px 4px rgba(0,0,0,0.3);
     position: relative;
 }
@@ -76,50 +87,11 @@ body {
     background: linear-gradient(to bottom, rgba(255,255,255,0.3), transparent);
 }
 
-/* Weapon Cooldown Bar */
-#weaponCooldown {
-    background: rgba(0,0,0,0.6);
-    padding: 12px;
-    border-radius: 8px;
-    margin-bottom: 15px;
-    border: 1px solid rgba(255,255,255,0.1);
-    backdrop-filter: blur(5px);
-}
-
-#weaponCooldown .label {
-    font-size: 14px;
-    margin-bottom: 5px;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    opacity: 0.9;
-}
-
-#weaponCooldownBar {
-    width: 250px;
-    height: 16px;
-    background: linear-gradient(to bottom, #1a1a1a, #2a2a2a);
-    border: 2px solid #444;
-    border-radius: 4px;
-    overflow: hidden;
-    position: relative;
-}
-
-#weaponCooldownFill {
+#cooldownFill {
     height: 100%;
-    background: linear-gradient(to right, #ffaa00, #ffdd44);
-    transition: width 0.1s ease;
+    background: linear-gradient(to right, #3366ff, #66aaff);
+    transition: width 0.1s linear;
     box-shadow: inset 0 -2px 4px rgba(0,0,0,0.3);
-    position: relative;
-}
-
-#weaponCooldownFill::after {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 50%;
-    background: linear-gradient(to bottom, rgba(255,255,255,0.3), transparent);
 }
 
 /* Stats Panel */
@@ -146,6 +118,12 @@ body {
 }
 
 /* Specific stat styles */
+#wave {
+    color: #ff66ff;
+    font-weight: bold;
+    font-size: 16px;
+}
+
 #level {
     color: #ffd700;
     font-weight: bold;
@@ -163,9 +141,239 @@ body {
     color: #99ccff;
 }
 
-#weaponInfo {
-    color: #ffaa44;
+/* Wave Indicator */
+#waveIndicator {
+    position: absolute;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0,0,0,0.9);
+    padding: 15px 30px;
+    border-radius: 10px;
+    border: 2px solid #ffd700;
+    text-align: center;
+    backdrop-filter: blur(10px);
+    display: none;
+    z-index: 50;
+    animation: wavePopup 0.5s ease;
+}
+
+#waveIndicator.show {
+    display: block;
+}
+
+#waveIndicator h2 {
+    color: #ffd700;
+    font-size: 24px;
+    margin-bottom: 5px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+}
+
+#waveIndicator p {
+    color: #ffffff;
+    font-size: 14px;
+    opacity: 0.9;
+}
+
+@keyframes wavePopup {
+    0% { 
+        transform: translateX(-50%) scale(0); 
+        opacity: 0; 
+    }
+    50% { 
+        transform: translateX(-50%) scale(1.1); 
+    }
+    100% { 
+        transform: translateX(-50%) scale(1); 
+        opacity: 1; 
+    }
+}
+
+/* Pause Overlay */
+#pauseOverlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.7);
+    display: none;
+    z-index: 90;
+    backdrop-filter: blur(5px);
+}
+
+#pauseOverlay.show {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#pauseOverlay .message {
+    text-align: center;
+    color: white;
+}
+
+#pauseOverlay .message h1 {
+    font-size: 48px;
+    margin-bottom: 10px;
+    text-transform: uppercase;
+    letter-spacing: 4px;
+}
+
+#pauseOverlay .message p {
+    font-size: 18px;
+    opacity: 0.8;
+}
+
+#pauseOverlay .controls-hint {
+    margin-top: 40px;
+    padding: 20px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+#pauseOverlay .controls-hint h3 {
+    color: #ffd700;
+    margin-bottom: 10px;
+}
+
+#pauseOverlay .controls-hint p {
+    font-size: 14px;
+    margin: 5px 0;
+}
+
+/* Upgrade Menu */
+#upgradeMenu {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: linear-gradient(135deg, rgba(10, 10, 20, 0.95), rgba(20, 10, 30, 0.95));
+    padding: 30px;
+    border-radius: 15px;
+    border: 3px solid #4a90e2;
+    backdrop-filter: blur(10px);
+    z-index: 100;
+    display: none;
+    min-width: 400px;
+    max-width: 600px;
+    box-shadow: 0 0 50px rgba(74, 144, 226, 0.3);
+}
+
+#upgradeMenu.show {
+    display: block;
+    animation: slideIn 0.3s ease;
+}
+
+@keyframes slideIn {
+    from { 
+        transform: translate(-50%, -60%); 
+        opacity: 0; 
+    }
+    to { 
+        transform: translate(-50%, -50%); 
+        opacity: 1; 
+    }
+}
+
+#upgradeMenu h2 {
+    color: #ffd700;
+    text-align: center;
+    margin-bottom: 20px;
+    font-size: 28px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+}
+
+.upgrade-option {
+    background: linear-gradient(135deg, #1a2332, #2a3342);
+    border: 2px solid #4a90e2;
+    padding: 15px;
+    margin: 10px 0;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.upgrade-option::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 215, 0, 0.1), transparent);
+    transition: left 0.5s ease;
+}
+
+.upgrade-option:hover {
+    transform: translateX(10px);
+    border-color: #ffd700;
+    background: linear-gradient(135deg, #2a3342, #3a4352);
+    box-shadow: 0 0 20px rgba(255, 215, 0, 0.3);
+}
+
+.upgrade-option:hover::before {
+    left: 100%;
+}
+
+.upgrade-option h3 {
+    color: #66ccff;
+    margin-bottom: 5px;
+    font-size: 18px;
+}
+
+.upgrade-option p {
+    color: #aaa;
+    font-size: 14px;
+    margin-bottom: 5px;
+}
+
+.upgrade-option .stats {
+    color: #4fc3f7;
+    font-size: 12px;
+    margin-top: 5px;
     font-weight: bold;
+    text-transform: uppercase;
+}
+
+.upgrade-hint {
+    text-align: center;
+    color: #888;
+    font-size: 12px;
+    margin-top: 15px;
+    opacity: 0.7;
+}
+
+/* Level up animation */
+@keyframes levelUp {
+    0% { 
+        transform: scale(1); 
+    }
+    50% { 
+        transform: scale(1.3); 
+        filter: brightness(1.5); 
+        color: #ffff00;
+    }
+    100% { 
+        transform: scale(1); 
+    }
+}
+
+.level-up-animation {
+    animation: levelUp 0.5s ease-in-out;
+}
+
+/* Notification styles */
+@keyframes fadeInOut {
+    0% { opacity: 0; transform: translate(-50%, -60%); }
+    20% { opacity: 1; transform: translate(-50%, -50%); }
+    80% { opacity: 1; transform: translate(-50%, -50%); }
+    100% { opacity: 0; transform: translate(-50%, -40%); }
 }
 
 /* Responsive adjustments */
@@ -175,12 +383,15 @@ body {
         left: 10px;
     }
     
-    #healthBar, #weaponCooldownBar {
+    #healthBar, #cooldownBar {
         width: 180px;
+    }
+    
+    #healthBar {
         height: 20px;
     }
     
-    #weaponCooldownBar {
+    #cooldownBar {
         height: 14px;
     }
     
@@ -188,15 +399,35 @@ body {
         font-size: 12px;
         min-width: 160px;
     }
+    
+    #upgradeMenu {
+        min-width: 90%;
+        padding: 20px;
+    }
+    
+    #upgradeMenu h2 {
+        font-size: 22px;
+    }
+    
+    .upgrade-option {
+        padding: 12px;
+    }
+    
+    #waveIndicator {
+        width: 80%;
+        padding: 10px 20px;
+    }
 }
 
-/* Animation for level up (to be triggered via JS) */
-@keyframes levelUp {
-    0% { transform: scale(1); }
-    50% { transform: scale(1.2); filter: brightness(1.5); }
-    100% { transform: scale(1); }
-}
-
-.level-up-animation {
-    animation: levelUp 0.5s ease-in-out;
+/* Performance mode (reduce effects) */
+@media (prefers-reduced-motion: reduce) {
+    * {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+    
+    .upgrade-option:hover {
+        transform: none;
+    }
 }

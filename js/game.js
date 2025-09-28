@@ -1,4 +1,4 @@
-// Game Class
+// Enhanced Game Class
 class Game {
     constructor(engine, canvas) {
         this.engine = engine;
@@ -19,19 +19,26 @@ class Game {
                 xpToNext: CONFIG.progression.xpBase,
                 pickupRadius: CONFIG.player.pickupRadius,
                 magnetRadius: CONFIG.player.magnetRadius,
-                weapon: WeaponFactory.createWeapon('basic')
+                lifeSteal: 0,
+                critChance: 0,
+                piercing: 0,
+                regen: 0,
+                lastRegen: 0
             },
             enemies: [],
             projectiles: [],
-            enemyProjectiles: [],
             pickups: [],
             startTime: Date.now(),
             level: 1,
-            waveNumber: 1,
-            enemySpawnRate: CONFIG.enemies.spawnRate,
+            currentWave: 1,
+            waveStartTime: Date.now(),
             lastEnemySpawn: 0,
             keys: {},
-            playerMesh: null
+            playerMesh: null,
+            rangeIndicator: null,
+            paused: false,
+            upgradesPending: 0,
+            rangeUpdated: false
         };
         
         this.initScene();
@@ -47,6 +54,8 @@ class Game {
         this.setupLights();
         this.createEnvironment();
         this.createPlayer();
+        this.ui = new UIManager(this);
+        this.ui.showWaveIndicator(1);
     }
     
     setupCamera() {
@@ -57,7 +66,6 @@ class Game {
         );
         camera.setTarget(BABYLON.Vector3.Zero());
         camera.rotation.x = CONFIG.world.cameraAngle;
-        camera.fov = 1.2; // Wider field of view for better visibility
     }
     
     setupLights() {
@@ -93,15 +101,15 @@ class Game {
         groundMat.specularColor = new BABYLON.Color3(0, 0, 0);
         ground.material = groundMat;
         
-        // Add visual variety
-        for (let i = 0; i < 10; i++) {
+        // Add grid pattern for visual interest
+        for (let i = 0; i < 15; i++) {
             const tile = BABYLON.MeshBuilder.CreateBox(
                 "tile", 
-                {width: 2, height: 0.01, depth: 2}, 
+                {width: 3, height: 0.01, depth: 3}, 
                 this.scene
             );
-            tile.position.x = (Math.random() - 0.5) * 40;
-            tile.position.z = (Math.random() - 0.5) * 40;
+            tile.position.x = (Math.random() - 0.5) * 50;
+            tile.position.z = (Math.random() - 0.5) * 50;
             tile.position.y = 0.01;
             
             const tileMat = new BABYLON.StandardMaterial("tileMat", this.scene);
@@ -134,47 +142,108 @@ class Game {
         indicatorMat.emissiveColor = new BABYLON.Color3(0.5, 0.5, 0);
         indicator.material = indicatorMat;
         
+        // Attack range indicator
+        if (CONFIG.player.showRangeIndicator) {
+            this.createRangeIndicator(player);
+        }
+        
         this.state.playerMesh = player;
+    }
+
+    createRangeIndicator(parent) {
+        if (this.state.rangeIndicator) {
+            this.state.rangeIndicator.dispose();
+        }
+        
+        const rangeIndicator = BABYLON.MeshBuilder.CreateTorus(
+            "rangeIndicator",
+            {
+                diameter: this.state.player.attackRange * 2, 
+                thickness: 0.1, 
+                tessellation: 32
+            },
+            this.scene
+        );
+        rangeIndicator.position.y = 0.05;
+        rangeIndicator.parent = parent;
+        
+        const rangeMat = new BABYLON.StandardMaterial("rangeMat", this.scene);
+        rangeMat.diffuseColor = new BABYLON.Color3(0.2, 0.4, 0.8);
+        rangeMat.alpha = 0.2;
+        rangeIndicator.material = rangeMat;
+        
+        this.state.rangeIndicator = rangeIndicator;
     }
     
     setupInput() {
         window.addEventListener("keydown", (e) => {
-            this.state.keys[e.key.toLowerCase()] = true;
+            const key = e.key.toLowerCase();
+            
+            // Pause on ESC or P
+            if (key === 'escape' || key === 'p') {
+                this.togglePause();
+                return;
+            }
+            
+            this.state.keys[key] = true;
         });
         
         window.addEventListener("keyup", (e) => {
             this.state.keys[e.key.toLowerCase()] = false;
         });
     }
+
+    togglePause() {
+        this.state.paused = !this.state.paused;
+        
+        if (this.state.paused) {
+            this.ui.showPauseOverlay();
+            
+            // Check for pending upgrades
+            if (this.state.upgradesPending > 0) {
+                this.ui.showUpgradeMenu();
+            }
+        } else {
+            this.ui.hidePauseOverlay();
+            this.ui.hideUpgradeMenu();
+        }
+    }
     
-    createEnemy() {
-        const enemyType = EnemyFactory.getRandomEnemyType(this.state.waveNumber);
-        const enemy = EnemyFactory.createEnemy(enemyType, this.scene);
+    createEnemy(type = 'basic') {
+        const enemyConfig = CONFIG.enemies.types[type];
+        const enemy = BABYLON.MeshBuilder.CreateSphere(
+            "enemy", 
+            {diameter: enemyConfig.size}, 
+            this.scene
+        );
         
         // Spawn position
         const angle = Math.random() * Math.PI * 2;
         const distance = CONFIG.enemies.spawnDistance + 
                         Math.random() * CONFIG.enemies.spawnDistanceVariance;
-        enemy.mesh.position.x = this.state.playerMesh.position.x + Math.cos(angle) * distance;
-        enemy.mesh.position.z = this.state.playerMesh.position.z + Math.sin(angle) * distance;
-        enemy.mesh.position.y = 0.4;
+        enemy.position.x = this.state.playerMesh.position.x + Math.cos(angle) * distance;
+        enemy.position.z = this.state.playerMesh.position.z + Math.sin(angle) * distance;
+        enemy.position.y = enemyConfig.size / 2;
+        
+        const enemyMat = new BABYLON.StandardMaterial("enemyMat", this.scene);
+        enemyMat.diffuseColor = enemyConfig.color;
+        enemyMat.emissiveColor = enemyConfig.emissive;
+        enemy.material = enemyMat;
+        
+        enemy.health = enemyConfig.health;
+        enemy.maxHealth = enemyConfig.health;
+        enemy.speed = enemyConfig.speed + Math.random() * enemyConfig.speedVariance;
+        enemy.damage = enemyConfig.damage;
+        enemy.type = type;
+        enemy.xpValue = enemyConfig.xpValue;
         
         this.state.enemies.push(enemy);
-        
-        // Check for boss spawn
-        if (EnemyFactory.shouldSpawnBoss(this.state.waveNumber)) {
-            const boss = EnemyFactory.createEnemy('boss', this.scene);
-            boss.mesh.position.x = this.state.playerMesh.position.x + Math.cos(angle + Math.PI) * (distance + 5);
-            boss.mesh.position.z = this.state.playerMesh.position.z + Math.sin(angle + Math.PI) * (distance + 5);
-            boss.mesh.position.y = 1;
-            this.state.enemies.push(boss);
-        }
     }
     
-    createProjectile(from, to, weapon) {
+    createProjectile(from, to) {
         const projectile = BABYLON.MeshBuilder.CreateSphere(
             "projectile", 
-            {diameter: weapon.projectileConfig.size || CONFIG.projectiles.basic.size}, 
+            {diameter: CONFIG.projectiles.basic.size}, 
             this.scene
         );
         
@@ -182,28 +251,33 @@ class Game {
         projectile.position.y = 0.8;
         
         const projectileMat = new BABYLON.StandardMaterial("projectileMat", this.scene);
-        projectileMat.diffuseColor = weapon.projectileConfig.color || CONFIG.projectiles.basic.color;
-        projectileMat.emissiveColor = weapon.projectileConfig.emissive || CONFIG.projectiles.basic.emissive;
+        
+        // Apply crit chance
+        let damage = this.state.player.damage;
+        let isCrit = Math.random() < this.state.player.critChance;
+        
+        if (isCrit) {
+            damage *= 2;
+            projectileMat.diffuseColor = CONFIG.projectiles.basic.critColor;
+            projectileMat.emissiveColor = CONFIG.projectiles.basic.critEmissive;
+        } else {
+            projectileMat.diffuseColor = CONFIG.projectiles.basic.color;
+            projectileMat.emissiveColor = CONFIG.projectiles.basic.emissive;
+        }
+        
         projectile.material = projectileMat;
         
         const direction = to.subtract(from).normalize();
-        projectile.velocity = direction.scale(weapon.projectileConfig.speed || CONFIG.projectiles.basic.speed);
-        projectile.damage = weapon.damage;
-        projectile.lifetime = weapon.projectileConfig.lifetime || CONFIG.projectiles.basic.lifetime;
-        projectile.weaponRef = weapon;
+        projectile.velocity = direction.scale(CONFIG.projectiles.basic.speed);
+        projectile.damage = damage;
+        projectile.lifetime = CONFIG.projectiles.basic.lifetime;
+        projectile.piercing = this.state.player.piercing;
+        projectile.hitEnemies = [];
         
         this.state.projectiles.push(projectile);
     }
     
-    createExplosiveProjectile(from, to, weapon) {
-        this.createProjectile(from, to, weapon);
-        // The last projectile is the explosive one
-        const projectile = this.state.projectiles[this.state.projectiles.length - 1];
-        projectile.isExplosive = true;
-        projectile.explosionRadius = weapon.explosionRadius;
-    }
-    
-    createPickup(position, type = 'xp') {
+    createPickup(position, type = 'xp', value = null) {
         const pickup = BABYLON.MeshBuilder.CreateSphere(
             "pickup", 
             {diameter: CONFIG.pickups[type].size}, 
@@ -219,7 +293,7 @@ class Game {
         pickup.material = pickupMat;
         
         pickup.type = type;
-        pickup.value = CONFIG.pickups[type].value;
+        pickup.value = value || CONFIG.pickups[type].value;
         pickup.floatOffset = Math.random() * Math.PI * 2;
         
         this.state.pickups.push(pickup);
@@ -232,7 +306,7 @@ class Game {
         this.state.enemies.forEach(enemy => {
             const dist = BABYLON.Vector3.Distance(
                 this.state.playerMesh.position, 
-                enemy.getPosition()
+                enemy.position
             );
             if (dist < minDist && dist <= this.state.player.attackRange) {
                 minDist = dist;
@@ -244,6 +318,8 @@ class Game {
     }
     
     updatePlayer() {
+        if (this.state.paused) return;
+        
         const moveVector = new BABYLON.Vector3(0, 0, 0);
         
         if (this.state.keys['w'] || this.state.keys['arrowup']) moveVector.z += 1;
@@ -253,16 +329,16 @@ class Game {
         
         if (moveVector.length() > 0) {
             moveVector.normalize();
-            const newPosition = this.state.playerMesh.position.add(
+            this.state.playerMesh.position.addInPlace(
                 moveVector.scale(this.state.player.speed)
             );
             
-            // Enforce boundary constraints
-            const boundary = CONFIG.world.groundSize / 2 - 1; // Leave 1 unit buffer
-            newPosition.x = Math.max(-boundary, Math.min(boundary, newPosition.x));
-            newPosition.z = Math.max(-boundary, Math.min(boundary, newPosition.z));
-            
-            this.state.playerMesh.position = newPosition;
+            // Keep player in bounds
+            const maxDist = CONFIG.world.groundSize / 2 - 1;
+            this.state.playerMesh.position.x = Math.max(-maxDist, 
+                Math.min(maxDist, this.state.playerMesh.position.x));
+            this.state.playerMesh.position.z = Math.max(-maxDist, 
+                Math.min(maxDist, this.state.playerMesh.position.z));
             
             // Rotate to face movement direction
             if (moveVector.length() > 0.1) {
@@ -274,40 +350,46 @@ class Game {
         // Camera follow
         this.scene.activeCamera.position.x = this.state.playerMesh.position.x;
         this.scene.activeCamera.position.z = this.state.playerMesh.position.z - CONFIG.world.cameraOffset;
+
+        // Handle regeneration
+        const currentTime = Date.now();
+        if (this.state.player.regen > 0 && currentTime - this.state.player.lastRegen > 1000) {
+            this.state.player.health = Math.min(
+                this.state.player.health + this.state.player.regen,
+                this.state.player.maxHealth
+            );
+            this.state.player.lastRegen = currentTime;
+            this.ui.updateHealthBar();
+        }
+
+        // Check for range updates
+        if (this.state.rangeUpdated) {
+            this.createRangeIndicator(this.state.playerMesh);
+            this.state.rangeUpdated = false;
+        }
     }
     
     updateEnemies() {
-        const currentTime = Date.now();
+        if (this.state.paused) return;
         
         this.state.enemies = this.state.enemies.filter(enemy => {
-            // Update enemy AI
-            enemy.update(this, currentTime);
+            // Move towards player
+            const direction = this.state.playerMesh.position.subtract(enemy.position);
+            direction.y = 0;
+            direction.normalize();
+            enemy.position.addInPlace(direction.scale(enemy.speed));
             
             // Check collision with player
             const distToPlayer = BABYLON.Vector3.Distance(
-                enemy.getPosition(), 
+                enemy.position, 
                 this.state.playerMesh.position
             );
             
             if (distToPlayer < 1) {
                 this.state.player.health -= enemy.damage;
-                this.updateHealthBar();
-                
-                // Create XP pickup
-                this.createPickup(enemy.getPosition(), 'xp');
-                for (let i = 0; i < enemy.xpValue; i++) {
-                    this.createPickup(enemy.getPosition(), 'xp');
-                }
-                
-                // Handle explosive enemies
-                if (enemy instanceof ExplosiveEnemy) {
-                    const explosion = enemy.explode();
-                    if (explosion) {
-                        this.handleExplosion(explosion);
-                    }
-                }
-                
-                enemy.destroy();
+                this.ui.updateHealthBar();
+                this.createPickup(enemy.position, 'xp', enemy.xpValue);
+                enemy.dispose();
                 return false;
             }
             
@@ -315,40 +397,9 @@ class Game {
         });
     }
     
-    handleExplosion(explosion) {
-        // Damage player if in range
-        const distToPlayer = BABYLON.Vector3.Distance(
-            explosion.position,
-            this.state.playerMesh.position
-        );
-        
-        if (distToPlayer <= explosion.radius) {
-            this.state.player.health -= explosion.damage;
-            this.updateHealthBar();
-        }
-        
-        // Damage other enemies
-        this.state.enemies.forEach(enemy => {
-            const distToEnemy = BABYLON.Vector3.Distance(
-                explosion.position,
-                enemy.getPosition()
-            );
-            
-            if (distToEnemy <= explosion.radius) {
-                const isDead = enemy.takeDamage(explosion.damage);
-                if (isDead) {
-                    this.createPickup(enemy.getPosition(), 'xp');
-                    for (let i = 0; i < enemy.xpValue; i++) {
-                        this.createPickup(enemy.getPosition(), 'xp');
-                    }
-                    enemy.destroy();
-                }
-            }
-        });
-    }
-    
     updateProjectiles() {
-        // Update player projectiles
+        if (this.state.paused) return;
+        
         this.state.projectiles = this.state.projectiles.filter(projectile => {
             projectile.position.addInPlace(projectile.velocity);
             projectile.lifetime--;
@@ -356,87 +407,45 @@ class Game {
             // Check collision with enemies
             for (let i = this.state.enemies.length - 1; i >= 0; i--) {
                 const enemy = this.state.enemies[i];
-                const dist = BABYLON.Vector3.Distance(projectile.position, enemy.getPosition());
+                
+                // Skip if already hit by this projectile
+                if (projectile.hitEnemies && projectile.hitEnemies.includes(enemy)) {
+                    continue;
+                }
+                
+                const dist = BABYLON.Vector3.Distance(projectile.position, enemy.position);
                 
                 if (dist < 0.8) {
-                    const isDead = enemy.takeDamage(projectile.damage);
+                    enemy.health -= projectile.damage;
                     
-                    if (isDead) {
-                        // Create XP pickups
-                        for (let j = 0; j < enemy.xpValue; j++) {
-                            this.createPickup(enemy.getPosition(), 'xp');
+                    // Track hit enemy for piercing
+                    if (!projectile.hitEnemies) projectile.hitEnemies = [];
+                    projectile.hitEnemies.push(enemy);
+                    
+                    if (enemy.health <= 0) {
+                        // Life steal on kill
+                        if (this.state.player.lifeSteal > 0) {
+                            this.state.player.health = Math.min(
+                                this.state.player.health + this.state.player.lifeSteal,
+                                this.state.player.maxHealth
+                            );
+                            this.ui.updateHealthBar();
                         }
                         
-                        // Health drop chance
+                        this.createPickup(enemy.position, 'xp', enemy.xpValue);
                         if (Math.random() < CONFIG.pickups.health.dropChance) {
-                            this.createPickup(enemy.getPosition(), 'health');
+                            this.createPickup(enemy.position, 'health');
                         }
-                        
-                        // Handle explosive enemies
-                        if (enemy instanceof ExplosiveEnemy) {
-                            const explosion = enemy.explode();
-                            if (explosion) {
-                                this.handleExplosion(explosion);
-                            }
-                        }
-                        
-                        enemy.destroy();
+                        enemy.dispose();
                         this.state.enemies.splice(i, 1);
                     }
                     
-                    // Handle explosive projectiles
-                    if (projectile.isExplosive) {
-                        this.createProjectileExplosion(projectile);
+                    // Destroy projectile if no piercing left
+                    if (!projectile.piercing || projectile.hitEnemies.length > projectile.piercing) {
+                        projectile.dispose();
+                        return false;
                     }
-                    
-                    projectile.dispose();
-                    return false;
                 }
-            }
-            
-            // Handle explosive projectiles at end of lifetime
-            if (projectile.lifetime <= 0) {
-                if (projectile.isExplosive) {
-                    this.createProjectileExplosion(projectile);
-                }
-                projectile.dispose();
-                return false;
-            }
-            
-            return true;
-        });
-        
-        // Update enemy projectiles
-        this.updateEnemyProjectiles();
-    }
-    
-    createProjectileExplosion(projectile) {
-        const explosion = {
-            position: projectile.position.clone(),
-            radius: projectile.explosionRadius,
-            damage: projectile.damage
-        };
-        this.handleExplosion(explosion);
-    }
-    
-    updateEnemyProjectiles() {
-        if (!this.state.enemyProjectiles) return;
-        
-        this.state.enemyProjectiles = this.state.enemyProjectiles.filter(projectile => {
-            projectile.position.addInPlace(projectile.velocity);
-            projectile.lifetime--;
-            
-            // Check collision with player
-            const distToPlayer = BABYLON.Vector3.Distance(
-                projectile.position, 
-                this.state.playerMesh.position
-            );
-            
-            if (distToPlayer < 0.8) {
-                this.state.player.health -= projectile.damage;
-                this.updateHealthBar();
-                projectile.dispose();
-                return false;
             }
             
             if (projectile.lifetime <= 0) {
@@ -449,6 +458,8 @@ class Game {
     }
     
     updatePickups() {
+        if (this.state.paused) return;
+        
         this.state.pickups = this.state.pickups.filter(pickup => {
             // Floating animation
             pickup.position.y = 0.5 + Math.sin(
@@ -504,7 +515,7 @@ class Game {
             this.state.player.health + value, 
             this.state.player.maxHealth
         );
-        this.updateHealthBar();
+        this.ui.updateHealthBar();
     }
     
     levelUp() {
@@ -513,7 +524,7 @@ class Game {
             this.state.player.xpToNext * CONFIG.progression.xpMultiplier
         );
         
-        // Apply bonuses
+        // Base stat improvements
         this.state.player.damage += CONFIG.player.levelUpDamageBonus;
         this.state.player.attackSpeed = Math.max(
             CONFIG.player.minAttackSpeed,
@@ -525,91 +536,70 @@ class Game {
             this.state.player.maxHealth
         );
         
-        // Upgrade weapon
-        this.state.player.weapon.upgrade();
+        // Offer upgrade selection
+        this.state.upgradesPending++;
+        this.togglePause();
         
-        this.updateHealthBar();
-        
-        // Add level up animation
-        const levelElement = document.getElementById('level');
-        levelElement.classList.add('level-up-animation');
-        setTimeout(() => {
-            levelElement.classList.remove('level-up-animation');
-        }, 500);
+        this.ui.updateHealthBar();
+        this.ui.animateLevelUp();
     }
     
-    spawnEnemies(currentTime) {
-        if (currentTime - this.state.lastEnemySpawn > this.state.enemySpawnRate) {
-            this.createEnemy();
-            this.state.lastEnemySpawn = currentTime;
+    updateWaveSystem(currentTime) {
+        if (this.state.paused) return;
+        
+        const waveConfig = CONFIG.waves[this.state.currentWave] || CONFIG.waves[8];
+        const waveElapsed = currentTime - this.state.waveStartTime;
+        
+        // Check wave completion
+        if (waveElapsed > waveConfig.duration) {
+            this.state.currentWave++;
+            this.state.waveStartTime = currentTime;
+            this.ui.showWaveIndicator(this.state.currentWave);
+            this.ui.updateStats();
+        }
+        
+        // Spawn enemies based on wave config
+        if (currentTime - this.state.lastEnemySpawn > waveConfig.spawnRate) {
+            let enemyType;
             
-            // Increase difficulty
-            if (this.state.enemies.length > CONFIG.enemies.maxEnemiesBeforeDifficultyIncrease) {
-                this.state.enemySpawnRate = Math.max(
-                    CONFIG.enemies.minSpawnRate,
-                    this.state.enemySpawnRate - CONFIG.enemies.spawnRateReduction
-                );
-                
-                // Increment wave number for enemy variety
-                if (this.state.enemySpawnRate <= CONFIG.enemies.minSpawnRate) {
-                    this.state.waveNumber++;
-                }
+            if (waveConfig.enemies[0] === 'all') {
+                const types = Object.keys(CONFIG.enemies.types);
+                enemyType = types[Math.floor(Math.random() * types.length)];
+            } else {
+                enemyType = waveConfig.enemies[Math.floor(Math.random() * waveConfig.enemies.length)];
             }
+            
+            this.createEnemy(enemyType);
+            this.state.lastEnemySpawn = currentTime;
         }
     }
     
     autoAttack(currentTime) {
-        const weapon = this.state.player.weapon;
+        if (this.state.paused) return;
         
-        if (weapon.canAttack(currentTime, this.state.player.lastAttack)) {
-            const attacked = weapon.attack(this, this.state.playerMesh.position, this.state.enemies);
-            if (attacked) {
+        // Update cooldown bar
+        const cooldownProgress = Math.min(1, 
+            (currentTime - this.state.player.lastAttack) / this.state.player.attackSpeed
+        );
+        this.ui.updateCooldownBar(cooldownProgress);
+        
+        if (currentTime - this.state.player.lastAttack > this.state.player.attackSpeed) {
+            const target = this.findNearestEnemy();
+            if (target) {
+                this.createProjectile(this.state.playerMesh.position, target.position);
                 this.state.player.lastAttack = currentTime;
             }
         }
     }
     
-    updateHealthBar() {
-        const percentage = Math.max(0, 
-            this.state.player.health / this.state.player.maxHealth * 100
-        );
-        document.getElementById('healthFill').style.width = percentage + '%';
-    }
-    
-    updateWeaponCooldown() {
-        const currentTime = Date.now();
-        const timeSinceLastAttack = currentTime - this.state.player.lastAttack;
-        const cooldownProgress = Math.min(1, timeSinceLastAttack / this.state.player.weapon.attackSpeed);
-        const percentage = cooldownProgress * 100;
-        
-        const cooldownFill = document.getElementById('weaponCooldownFill');
-        if (cooldownFill) {
-            cooldownFill.style.width = percentage + '%';
+    checkGameOver() {
+        if (this.state.player.health <= 0) {
+            const survivalTime = this.formatTime(Date.now() - this.state.startTime);
+            alert(`Game Over!\nSurvived: ${survivalTime}\nWave: ${this.state.currentWave}\nLevel: ${this.state.level}`);
+            location.reload();
         }
     }
-    
-    updateStats() {
-        document.getElementById('enemyCount').textContent = 
-            `Enemies: ${this.state.enemies.length}`;
-        
-        const elapsed = Date.now() - this.state.startTime;
-        document.getElementById('timer').textContent = 
-            `Time: ${this.formatTime(elapsed)}`;
-        
-        document.getElementById('level').textContent = 
-            `Level: ${this.state.level}`;
-        
-        document.getElementById('xp').textContent = 
-            `XP: ${this.state.player.xp} / ${this.state.player.xpToNext}`;
-            
-        // Update weapon display
-        const weaponElement = document.getElementById('weaponInfo');
-        if (weaponElement) {
-            const weapon = this.state.player.weapon;
-            weaponElement.textContent = `${weapon.name} Lv.${weapon.level}`;
-        }
-    }
-    
+
     formatTime(ms) {
         const seconds = Math.floor(ms / 1000);
         const minutes = Math.floor(seconds / 60);
@@ -617,33 +607,26 @@ class Game {
         return `${minutes}:${secs.toString().padStart(2, '0')}`;
     }
     
-    checkGameOver() {
-        if (this.state.player.health <= 0) {
-            const survivalTime = this.formatTime(Date.now() - this.state.startTime);
-            alert(`Game Over!\nSurvived: ${survivalTime}\nLevel: ${this.state.level}`);
-            location.reload();
-        }
-    }
-    
     startGameLoop() {
         this.scene.registerBeforeRender(() => {
             const currentTime = Date.now();
             
             this.updatePlayer();
-            this.spawnEnemies(currentTime);
+            this.updateWaveSystem(currentTime);
             this.autoAttack(currentTime);
             this.updateEnemies();
             this.updateProjectiles();
             this.updatePickups();
-            this.updateStats();
-            this.updateWeaponCooldown();
+            this.ui.updateStats();
             this.checkGameOver();
         });
     }
     
     start() {
         this.engine.runRenderLoop(() => {
-            this.scene.render();
+            if (!this.state.paused || this.state.upgradesPending > 0) {
+                this.scene.render();
+            }
         });
         
         window.addEventListener("resize", () => {
