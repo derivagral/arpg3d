@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ARPG3D - Vampire Survivors Style</title>
+    <link rel="stylesheet" href="css/main.css">
+</head>
+<body>
+    <canvas id="renderCanvas"></canvas>
+    
+    <div id="ui">
+        <div id="health">
+            <div class="label">Health</div>
+            <div id="healthBar">
+                <div id="healthFill"></div>
+            </div>
+        </div>
+        
+        <div id="stats">
+            <div id="enemyCount">Enemies: 0</div>
+            <div id="timer">Time: 0:00</div>
+            <div id="level">Level: 1</div>
+            <div id="xp">XP: 0 / 10</div>
+        </div>
+    </div>
+
+    <!-- Babylon.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babylonjs/7.0.0/babylon.js"></script>
+    
+    <!-- Game Scripts -->
+    <script src="js/config.js"></script>
+    <script src="js/game.js"></script>
+    <script src="js/main.js"></script>
+</body>
+</html>
