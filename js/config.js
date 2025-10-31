@@ -115,78 +115,78 @@ const CONFIG = {
     },
 
     upgrades: [
-        { 
-            name: "Damage Boost", 
-            description: "Increase projectile damage", 
-            stat: "+25% Damage", 
-            apply: (state) => { state.player.damage *= 1.25; } 
+        {
+            name: "Damage Boost",
+            description: "Increase projectile damage",
+            stat: "+25% Damage",
+            apply: (game) => { game.player.stats.damage *= 1.25; }
         },
-        { 
-            name: "Rapid Fire", 
-            description: "Faster attack speed", 
-            stat: "-20% Cooldown", 
-            apply: (state) => { state.player.attackSpeed *= 0.8; } 
+        {
+            name: "Rapid Fire",
+            description: "Faster attack speed",
+            stat: "-20% Cooldown",
+            apply: (game) => { game.player.stats.attackSpeed *= 0.8; }
         },
-        { 
-            name: "Extended Range", 
-            description: "Increase attack range", 
-            stat: "+30% Range", 
-            apply: (state) => { 
-                state.player.attackRange *= 1.3;
-                state.rangeUpdated = true; // Flag for visual update
-            } 
+        {
+            name: "Extended Range",
+            description: "Increase attack range",
+            stat: "+30% Range",
+            apply: (game) => {
+                game.player.stats.attackRange *= 1.3;
+                game.player.rangeUpdated = true; // Flag for visual update
+            }
         },
-        { 
-            name: "Life Steal", 
-            description: "Heal on enemy kills", 
-            stat: "+5 HP per kill", 
-            apply: (state) => { 
-                state.player.lifeSteal = (state.player.lifeSteal || 0) + 5; 
-            } 
+        {
+            name: "Life Steal",
+            description: "Heal on enemy kills",
+            stat: "+5 HP per kill",
+            apply: (game) => {
+                game.player.stats.lifeSteal = (game.player.stats.lifeSteal || 0) + 5;
+            }
         },
-        { 
-            name: "Speed Boost", 
-            description: "Move faster", 
-            stat: "+15% Speed", 
-            apply: (state) => { state.player.speed *= 1.15; } 
+        {
+            name: "Speed Boost",
+            description: "Move faster",
+            stat: "+15% Speed",
+            apply: (game) => { game.player.stats.speed *= 1.15; }
         },
-        { 
-            name: "Max Health", 
-            description: "Increase maximum health", 
-            stat: "+30 Max HP", 
-            apply: (state) => { 
-                state.player.maxHealth += 30; 
-                state.player.health += 30; 
-            } 
+        {
+            name: "Max Health",
+            description: "Increase maximum health",
+            stat: "+30 Max HP",
+            apply: (game) => {
+                game.player.stats.maxHealth += 30;
+                game.player.stats.health += 30;
+            }
         },
-        { 
-            name: "Magnet Power", 
-            description: "Increase pickup range", 
-            stat: "+50% Pickup Range", 
-            apply: (state) => { state.player.magnetRadius *= 1.5; } 
+        {
+            name: "Magnet Power",
+            description: "Increase pickup range",
+            stat: "+50% Pickup Range",
+            apply: (game) => { game.player.stats.magnetRadius *= 1.5; }
         },
-        { 
-            name: "Critical Chance", 
-            description: "Chance for double damage", 
-            stat: "+15% Crit", 
-            apply: (state) => { 
-                state.player.critChance = (state.player.critChance || 0) + 0.15; 
-            } 
+        {
+            name: "Critical Chance",
+            description: "Chance for double damage",
+            stat: "+15% Crit",
+            apply: (game) => {
+                game.player.stats.critChance = (game.player.stats.critChance || 0) + 0.15;
+            }
         },
         {
             name: "Piercing Shots",
             description: "Projectiles hit multiple enemies",
             stat: "+2 Pierce",
-            apply: (state) => {
-                state.player.piercing = (state.player.piercing || 0) + 2;
+            apply: (game) => {
+                game.player.stats.piercing = (game.player.stats.piercing || 0) + 2;
             }
         },
         {
             name: "Regeneration",
             description: "Slowly regenerate health",
             stat: "+1 HP/sec",
-            apply: (state) => {
-                state.player.regen = (state.player.regen || 0) + 1;
+            apply: (game) => {
+                game.player.stats.regen = (game.player.stats.regen || 0) + 1;
             }
         }
     ],
