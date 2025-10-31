@@ -230,9 +230,9 @@ const CONFIG = {
     
     world: {
         groundSize: 60,
-        cameraHeight: 25,
-        cameraOffset: 8,
-        cameraAngle: Math.PI / 2.2
+        cameraHeight: 30,
+        cameraOffset: 15,
+        cameraAngle: Math.PI / 3
     },
     
     ui: {
