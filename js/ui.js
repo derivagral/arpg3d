@@ -47,7 +47,7 @@ class UIManager {
     updateStats() {
         const state = this.game.state;
 
-        this.elements.wave.textContent = `Wave: ${state.currentWave}`;
+        this.elements.wave.textContent = `Wave: ${this.game.spawnManager.currentWave}`;
         this.elements.enemyCount.textContent = `Enemies: ${state.enemies.length}`;
 
         const elapsed = Date.now() - state.startTime;

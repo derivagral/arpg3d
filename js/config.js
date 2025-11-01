@@ -63,54 +63,92 @@ const CONFIG = {
         spawnDistanceVariance: 5
     },
 
+    // Spawn system configuration
+    spawn: {
+        // Default spawn pattern (circle, grid, directional, line, fixed)
+        defaultSpawnPattern: 'circle',
+
+        // Base spawn settings
+        spawnDistance: 12,
+        spawnDistanceVariance: 5,
+
+        // Difficulty scaling over time
+        difficultyScaling: {
+            enabled: true,
+            timeScaleInterval: 60000,      // Increase difficulty every 60 seconds
+            maxTimeScaling: 3.0,           // Cap at 3x difficulty
+            spawnRateIncrease: 0.05,       // +5% spawn rate per interval
+            enemyStatIncrease: 0.03        // +3% enemy HP/damage per interval
+        },
+
+        // Wave configuration (can be customized per wave below)
+        waves: null  // Will use CONFIG.waves if not overridden
+    },
+
     waves: {
-        1: { 
-            duration: 30000, 
-            enemies: ['basic'], 
-            spawnRate: 2000, 
-            message: "The horde approaches!" 
+        1: {
+            duration: 30000,
+            enemies: ['basic'],
+            spawnRate: 2000,
+            spawnCount: 1,
+            spawnPattern: 'circle',
+            message: "The horde approaches!"
         },
-        2: { 
-            duration: 40000, 
-            enemies: ['basic', 'basic', 'fast'], 
-            spawnRate: 1800, 
-            message: "Speed demons join the fight!" 
+        2: {
+            duration: 40000,
+            enemies: ['basic', 'basic', 'fast'],
+            spawnRate: 1800,
+            spawnCount: 1,
+            spawnPattern: 'circle',
+            message: "Speed demons join the fight!"
         },
-        3: { 
-            duration: 45000, 
-            enemies: ['basic', 'fast', 'fast'], 
-            spawnRate: 1600, 
-            message: "They're getting faster!" 
+        3: {
+            duration: 45000,
+            enemies: ['basic', 'fast', 'fast'],
+            spawnRate: 1600,
+            spawnCount: 1,
+            spawnPattern: 'directional',
+            message: "They're getting faster!"
         },
-        4: { 
-            duration: 50000, 
-            enemies: ['basic', 'fast', 'tank'], 
-            spawnRate: 1500, 
-            message: "Heavy units incoming!" 
+        4: {
+            duration: 50000,
+            enemies: ['basic', 'fast', 'tank'],
+            spawnRate: 1500,
+            spawnCount: 1,
+            spawnPattern: 'circle',
+            message: "Heavy units incoming!"
         },
-        5: { 
-            duration: 60000, 
-            enemies: ['basic', 'fast', 'tank', 'swarm', 'swarm'], 
-            spawnRate: 1400, 
-            message: "The swarm arrives!" 
+        5: {
+            duration: 60000,
+            enemies: ['basic', 'fast', 'tank', 'swarm', 'swarm'],
+            spawnRate: 1400,
+            spawnCount: 2,
+            spawnPattern: 'circle',
+            message: "The swarm arrives!"
         },
-        6: { 
-            duration: 60000, 
-            enemies: ['fast', 'tank', 'swarm', 'swarm'], 
-            spawnRate: 1200, 
-            message: "Chaos unleashed!" 
+        6: {
+            duration: 60000,
+            enemies: ['fast', 'tank', 'swarm', 'swarm'],
+            spawnRate: 1200,
+            spawnCount: 2,
+            spawnPattern: 'line',
+            message: "Chaos unleashed!"
         },
-        7: { 
-            duration: 70000, 
-            enemies: ['tank', 'tank', 'fast', 'swarm'], 
-            spawnRate: 1000, 
-            message: "Elite forces deployed!" 
+        7: {
+            duration: 70000,
+            enemies: ['tank', 'tank', 'fast', 'swarm'],
+            spawnRate: 1000,
+            spawnCount: 2,
+            spawnPattern: 'grid',
+            message: "Elite forces deployed!"
         },
-        8: { 
-            duration: 80000, 
+        8: {
+            duration: 80000,
             enemies: ['all'], // Special flag for all types
-            spawnRate: 800, 
-            message: "MAXIMUM THREAT!" 
+            spawnRate: 800,
+            spawnCount: 3,
+            spawnPattern: 'circle',
+            message: "MAXIMUM THREAT!"
         }
     },
 
@@ -187,6 +225,59 @@ const CONFIG = {
             stat: "+1 HP/sec",
             apply: (game) => {
                 game.player.stats.regen = (game.player.stats.regen || 0) + 1;
+            }
+        },
+        // Spawn-related upgrades
+        {
+            name: "Swarm Training",
+            description: "More enemies, more rewards",
+            stat: "+20% Mob Count",
+            apply: (game) => {
+                if (game.spawnManager) {
+                    game.spawnManager.applyModifier('spawnCountMultiplier', 1.2);
+                }
+            }
+        },
+        {
+            name: "Horde Master",
+            description: "They come faster now",
+            stat: "+15% Spawn Rate",
+            apply: (game) => {
+                if (game.spawnManager) {
+                    game.spawnManager.applyModifier('spawnRateMultiplier', 1.15);
+                }
+            }
+        },
+        {
+            name: "Culling",
+            description: "Fewer but tougher enemies",
+            stat: "-30% Count, +50% Enemy Stats",
+            apply: (game) => {
+                if (game.spawnManager) {
+                    game.spawnManager.applyModifier('spawnCountMultiplier', 0.7);
+                    game.spawnManager.applyModifier('enemyHealthMultiplier', 1.5);
+                    game.spawnManager.applyModifier('enemyDamageMultiplier', 1.5);
+                }
+            }
+        },
+        {
+            name: "Monster Magnet",
+            description: "Enemies spawn closer",
+            stat: "-25% Spawn Distance",
+            apply: (game) => {
+                if (game.spawnManager) {
+                    game.spawnManager.applyModifier('spawnRadiusMultiplier', 0.75);
+                }
+            }
+        },
+        {
+            name: "Safe Distance",
+            description: "Enemies spawn farther away",
+            stat: "+40% Spawn Distance",
+            apply: (game) => {
+                if (game.spawnManager) {
+                    game.spawnManager.applyModifier('spawnRadiusMultiplier', 1.4);
+                }
             }
         }
     ],
