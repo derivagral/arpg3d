@@ -173,7 +173,7 @@ class SpawnManager {
         const variance = this.config.spawnDistanceVariance || 5;
         const distance = (baseDistance + Math.random() * variance) * this.modifiers.spawnRadiusMultiplier;
 
-        return new THREE.Vector3(
+        return new BABYLON.Vector3(
             player.mesh.position.x + Math.cos(angle) * distance,
             0.5,
             player.mesh.position.z + Math.sin(angle) * distance
@@ -194,7 +194,7 @@ class SpawnManager {
         const offsetX = (col - gridSize / 2) * spacing;
         const offsetZ = (row - gridSize / 2) * spacing;
 
-        return new THREE.Vector3(
+        return new BABYLON.Vector3(
             player.mesh.position.x + offsetX + baseDistance,
             0.5,
             player.mesh.position.z + offsetZ + baseDistance
@@ -216,7 +216,7 @@ class SpawnManager {
         const baseDistance = this.config.spawnDistance || 12;
         const distance = (baseDistance + Math.random() * 5) * this.modifiers.spawnRadiusMultiplier;
 
-        return new THREE.Vector3(
+        return new BABYLON.Vector3(
             player.mesh.position.x + Math.cos(angle) * distance,
             0.5,
             player.mesh.position.z + Math.sin(angle) * distance
@@ -234,7 +234,7 @@ class SpawnManager {
         const spacing = 2 * this.modifiers.spawnRadiusMultiplier;
         const lineOffset = (index - totalCount / 2) * spacing;
 
-        return new THREE.Vector3(
+        return new BABYLON.Vector3(
             player.mesh.position.x + Math.cos(angle) * baseDistance + Math.cos(perpAngle) * lineOffset,
             0.5,
             player.mesh.position.z + Math.sin(angle) * baseDistance + Math.sin(perpAngle) * lineOffset
@@ -248,7 +248,7 @@ class SpawnManager {
         // Use active spawn points if any
         if (this.activeSpawnPoints.length > 0) {
             const point = this.activeSpawnPoints[index % this.activeSpawnPoints.length];
-            return new THREE.Vector3(point.x, 0.5, point.z);
+            return new BABYLON.Vector3(point.x, 0.5, point.z);
         }
 
         // Fallback to circle
