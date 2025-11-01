@@ -116,7 +116,7 @@ class SpawnManager {
         if (!enemy) return null;
 
         // Apply position
-        enemy.mesh.position.copy(position);
+        enemy.mesh.position.copyFrom(position);
 
         // Apply difficulty modifiers
         const healthMod = this.getEffectiveHealthMultiplier();
