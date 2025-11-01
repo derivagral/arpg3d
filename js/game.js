@@ -15,14 +15,12 @@ class Game {
         // Initialize managers that depend on game reference
         this.projectileManager = new ProjectileManager(this);
         this.pickupManager = new PickupManager(this);
+        this.spawnManager = new SpawnManager(this, CONFIG.spawn);
 
         // Game state
         this.state = {
             enemies: [],
             startTime: Date.now(),
-            currentWave: 1,
-            waveStartTime: Date.now(),
-            lastEnemySpawn: 0,
             paused: false,
             upgradesPending: 0
         };
@@ -63,20 +61,6 @@ class Game {
         }
     }
 
-    createEnemy(type = 'basic') {
-        const enemy = EnemyFactory.createEnemy(type, this.scene);
-
-        // Spawn position
-        const angle = Math.random() * Math.PI * 2;
-        const distance = CONFIG.enemies.spawnDistance +
-                        Math.random() * CONFIG.enemies.spawnDistanceVariance;
-        enemy.mesh.position.x = this.player.mesh.position.x + Math.cos(angle) * distance;
-        enemy.mesh.position.z = this.player.mesh.position.z + Math.sin(angle) * distance;
-        enemy.mesh.position.y = enemy.size / 2;
-
-        this.state.enemies.push(enemy);
-        return enemy;
-    }
 
     findNearestEnemy() {
         let nearest = null;
@@ -188,30 +172,16 @@ class Game {
     updateWaveSystem(currentTime) {
         if (this.state.paused) return;
 
-        const waveConfig = CONFIG.waves[this.state.currentWave] || CONFIG.waves[8];
-        const waveElapsed = currentTime - this.state.waveStartTime;
+        // Track previous wave to detect changes
+        const previousWave = this.spawnManager.currentWave;
 
-        // Check wave completion
-        if (waveElapsed > waveConfig.duration) {
-            this.state.currentWave++;
-            this.state.waveStartTime = currentTime;
-            this.ui.showWaveIndicator(this.state.currentWave);
+        // Update spawn manager (handles wave progression and spawning)
+        this.spawnManager.update(currentTime, this.player, this.state.enemies);
+
+        // Show wave indicator if wave changed
+        if (this.spawnManager.currentWave !== previousWave) {
+            this.ui.showWaveIndicator(this.spawnManager.currentWave);
             this.ui.updateStats();
-        }
-
-        // Spawn enemies based on wave config
-        if (currentTime - this.state.lastEnemySpawn > waveConfig.spawnRate) {
-            let enemyType;
-
-            if (waveConfig.enemies[0] === 'all') {
-                // Use EnemyFactory to get random type based on wave
-                enemyType = EnemyFactory.getRandomEnemyType(this.state.currentWave);
-            } else {
-                enemyType = waveConfig.enemies[Math.floor(Math.random() * waveConfig.enemies.length)];
-            }
-
-            this.createEnemy(enemyType);
-            this.state.lastEnemySpawn = currentTime;
         }
     }
 
@@ -240,7 +210,7 @@ class Game {
     checkGameOver() {
         if (this.player.stats.health <= 0) {
             const survivalTime = this.formatTime(Date.now() - this.state.startTime);
-            alert(`Game Over!\nSurvived: ${survivalTime}\nWave: ${this.state.currentWave}\nLevel: ${this.player.level}`);
+            alert(`Game Over!\nSurvived: ${survivalTime}\nWave: ${this.spawnManager.currentWave}\nLevel: ${this.player.level}`);
             location.reload();
         }
     }

@@ -73,8 +73,8 @@ window.addEventListener('DOMContentLoaded', () => {
 
             // Skip to wave
             skipToWave: (waveNum) => {
-                game.state.currentWave = waveNum;
-                game.state.waveStartTime = Date.now();
+                game.spawnManager.currentWave = waveNum;
+                game.spawnManager.waveStartTime = Date.now();
                 game.ui.showWaveIndicator(waveNum);
                 console.log(`Skipped to wave ${waveNum}`);
             },
@@ -101,9 +101,46 @@ window.addEventListener('DOMContentLoaded', () => {
             // Spawn specific enemy
             spawnEnemy: (type = 'basic', count = 1) => {
                 for (let i = 0; i < count; i++) {
-                    game.createEnemy(type);
+                    const enemy = EnemyFactory.createEnemy(type, game.scene);
+                    if (enemy) {
+                        const angle = Math.random() * Math.PI * 2;
+                        const distance = 12 + Math.random() * 5;
+                        enemy.mesh.position.x = game.player.mesh.position.x + Math.cos(angle) * distance;
+                        enemy.mesh.position.z = game.player.mesh.position.z + Math.sin(angle) * distance;
+                        enemy.mesh.position.y = 0.5;
+                        game.state.enemies.push(enemy);
+                    }
                 }
                 console.log(`Spawned ${count} ${type} enemies`);
+            },
+
+            // Spawn system debug commands
+            setSpawnRate: (multiplier) => {
+                game.spawnManager.setModifier('spawnRateMultiplier', multiplier);
+                console.log(`Spawn rate multiplier set to ${multiplier}x`);
+            },
+
+            setSpawnCount: (multiplier) => {
+                game.spawnManager.setModifier('spawnCountMultiplier', multiplier);
+                console.log(`Spawn count multiplier set to ${multiplier}x`);
+            },
+
+            getSpawnStats: () => {
+                const stats = game.spawnManager.getStats();
+                console.log('Current Spawn Stats:', stats);
+                return stats;
+            },
+
+            setSpawnPattern: (pattern) => {
+                const wave = game.spawnManager.getWaveConfig();
+                wave.spawnPattern = pattern;
+                console.log(`Spawn pattern set to: ${pattern}`);
+                console.log('Available patterns: circle, grid, directional, line, fixed');
+            },
+
+            toggleDifficultyScaling: () => {
+                game.spawnManager.difficultyScaling.enabled = !game.spawnManager.difficultyScaling.enabled;
+                console.log(`Difficulty scaling: ${game.spawnManager.difficultyScaling.enabled ? 'ON' : 'OFF'}`);
             }
         };
         
@@ -112,16 +149,23 @@ window.addEventListener('DOMContentLoaded', () => {
             ==================
             Access game state: window.game
             Debug commands: window.debugCommands
-            
-            Available commands:
+
+            Basic Commands:
             - debugCommands.giveXP(amount)
             - debugCommands.setHealth(amount)
             - debugCommands.skipToWave(waveNum)
             - debugCommands.clearEnemies()
             - debugCommands.godMode()
             - debugCommands.spawnEnemy(type, count)
-            
-            Enemy types: basic, fast, tank, explosive, ranged, boss
+
+            Spawn System Commands:
+            - debugCommands.setSpawnRate(multiplier)      // 2.0 = 2x faster spawning
+            - debugCommands.setSpawnCount(multiplier)     // 3.0 = 3x more enemies
+            - debugCommands.getSpawnStats()               // View current spawn stats
+            - debugCommands.setSpawnPattern(pattern)      // circle, grid, directional, line, fixed
+            - debugCommands.toggleDifficultyScaling()     // Enable/disable time-based scaling
+
+            Enemy types: basic, fast, tank, explosive, ranged, boss, swarm
         `);
     }
     
