@@ -41,7 +41,7 @@ class Enemy {
     
     move(game) {
         // Basic movement towards player
-        const direction = game.state.playerMesh.position.subtract(this.mesh.position);
+        const direction = game.player.mesh.position.subtract(this.mesh.position);
         direction.y = 0;
         direction.normalize();
         this.mesh.position.addInPlace(direction.scale(this.speed));
@@ -113,20 +113,20 @@ class FastEnemy extends Enemy {
     
     move(game) {
         // Slightly erratic movement
-        const baseDirection = game.state.playerMesh.position.subtract(this.mesh.position);
+        const baseDirection = game.player.mesh.position.subtract(this.mesh.position);
         baseDirection.y = 0;
         baseDirection.normalize();
-        
+
         // Add some randomness
         const randomOffset = new BABYLON.Vector3(
             (Math.random() - 0.5) * 0.1,
             0,
             (Math.random() - 0.5) * 0.1
         );
-        
+
         baseDirection.addInPlace(randomOffset);
         baseDirection.normalize();
-        
+
         this.mesh.position.addInPlace(baseDirection.scale(this.speed));
     }
 }
@@ -151,6 +151,21 @@ class TankEnemy extends Enemy {
         if (this.health < this.maxHealth * 0.5) {
             this.speed = Math.min(0.025, this.speed + 0.001);
         }
+    }
+}
+
+// Swarm Enemy - Weak but numerous
+class SwarmEnemy extends Enemy {
+    constructor(scene) {
+        super('Swarm', {
+            health: 10,
+            speed: 0.06,
+            damage: 2,
+            size: 0.4,
+            xpValue: 1,
+            color: new BABYLON.Color3(0.2, 1, 0.2),
+            emissive: new BABYLON.Color3(0.1, 0.5, 0.1)
+        }, scene);
     }
 }
 
@@ -291,9 +306,9 @@ class RangedEnemy extends Enemy {
         
         const distToPlayer = BABYLON.Vector3.Distance(
             this.mesh.position,
-            game.state.playerMesh.position
+            game.player.mesh.position
         );
-        
+
         if (distToPlayer <= this.attackRange) {
             this.shootAtPlayer(game);
             this.lastAction = currentTime;
@@ -306,46 +321,45 @@ class RangedEnemy extends Enemy {
             {diameter: 0.2},
             this.scene
         );
-        
+
         projectile.position = this.mesh.position.clone();
         projectile.position.y = 0.8;
-        
+
         const projectileMat = new BABYLON.StandardMaterial('enemyProjectileMat', this.scene);
         projectileMat.diffuseColor = new BABYLON.Color3(1, 0, 1);
         projectileMat.emissiveColor = new BABYLON.Color3(0.5, 0, 0.5);
         projectile.material = projectileMat;
-        
-        const direction = game.state.playerMesh.position.subtract(projectile.position);
+
+        const direction = game.player.mesh.position.subtract(projectile.position);
         direction.y = 0;
         direction.normalize();
-        
+
         projectile.velocity = direction.scale(this.projectileSpeed);
         projectile.damage = this.damage;
         projectile.lifetime = 120;
         projectile.isEnemyProjectile = true;
-        
-        game.state.enemyProjectiles = game.state.enemyProjectiles || [];
-        game.state.enemyProjectiles.push(projectile);
+
+        game.projectileManager.addEnemyProjectile(projectile);
     }
     
     move(game) {
         const distToPlayer = BABYLON.Vector3.Distance(
             this.mesh.position,
-            game.state.playerMesh.position
+            game.player.mesh.position
         );
-        
+
         // Keep optimal distance - not too close, not too far
         const optimalDistance = 6;
-        
+
         if (distToPlayer < optimalDistance - 1) {
             // Move away
-            const direction = this.mesh.position.subtract(game.state.playerMesh.position);
+            const direction = this.mesh.position.subtract(game.player.mesh.position);
             direction.y = 0;
             direction.normalize();
             this.mesh.position.addInPlace(direction.scale(this.speed));
         } else if (distToPlayer > optimalDistance + 1) {
             // Move closer
-            const direction = game.state.playerMesh.position.subtract(this.mesh.position);
+            const direction = game.player.mesh.position.subtract(this.mesh.position);
             direction.y = 0;
             direction.normalize();
             this.mesh.position.addInPlace(direction.scale(this.speed));
@@ -422,13 +436,13 @@ class BossEnemy extends Enemy {
     
     chargeAttack(game) {
         // Temporary speed boost towards player
-        const direction = game.state.playerMesh.position.subtract(this.mesh.position);
+        const direction = game.player.mesh.position.subtract(this.mesh.position);
         direction.y = 0;
         direction.normalize();
-        
+
         const chargeSpeed = 0.1;
         const chargeDuration = 1000;
-        
+
         const startTime = Date.now();
         const chargeInterval = setInterval(() => {
             if (Date.now() - startTime > chargeDuration || !this.mesh) {
@@ -481,9 +495,8 @@ class BossEnemy extends Enemy {
                 projectile.damage = this.damage * 0.5;
                 projectile.lifetime = 150;
                 projectile.isEnemyProjectile = true;
-                
-                game.state.enemyProjectiles = game.state.enemyProjectiles || [];
-                game.state.enemyProjectiles.push(projectile);
+
+                game.projectileManager.addEnemyProjectile(projectile);
             }, i * 100);
         }
     }
@@ -499,6 +512,8 @@ class EnemyFactory {
                 return new FastEnemy(scene);
             case 'tank':
                 return new TankEnemy(scene);
+            case 'swarm':
+                return new SwarmEnemy(scene);
             case 'explosive':
                 return new ExplosiveEnemy(scene);
             case 'ranged':
@@ -512,12 +527,13 @@ class EnemyFactory {
     
     static getRandomEnemyType(waveNumber) {
         const types = ['basic', 'fast'];
-        
+
         // Unlock enemy types based on wave/time
+        if (waveNumber > 3) types.push('swarm');
         if (waveNumber > 5) types.push('tank');
         if (waveNumber > 10) types.push('explosive');
         if (waveNumber > 15) types.push('ranged');
-        
+
         return types[Math.floor(Math.random() * types.length)];
     }
     
@@ -534,6 +550,7 @@ if (typeof module !== 'undefined' && module.exports) {
         BasicEnemy,
         FastEnemy,
         TankEnemy,
+        SwarmEnemy,
         ExplosiveEnemy,
         RangedEnemy,
         BossEnemy,

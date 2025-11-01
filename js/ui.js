@@ -25,11 +25,11 @@ class UIManager {
     }
 
     updateHealthBar() {
-        const percentage = Math.max(0, 
-            this.game.state.player.health / this.game.state.player.maxHealth * 100
+        const percentage = Math.max(0,
+            this.game.player.stats.health / this.game.player.stats.maxHealth * 100
         );
         this.elements.healthFill.style.width = percentage + '%';
-        
+
         // Change color based on health percentage
         if (percentage < 25) {
             this.elements.healthFill.style.background = 'linear-gradient(to right, #cc0000, #ff3333)';
@@ -46,16 +46,16 @@ class UIManager {
 
     updateStats() {
         const state = this.game.state;
-        
+
         this.elements.wave.textContent = `Wave: ${state.currentWave}`;
         this.elements.enemyCount.textContent = `Enemies: ${state.enemies.length}`;
-        
+
         const elapsed = Date.now() - state.startTime;
         this.elements.timer.textContent = `Time: ${this.game.formatTime(elapsed)}`;
-        
-        this.elements.level.textContent = `Level: ${state.level}`;
-        this.elements.xp.textContent = 
-            `XP: ${Math.floor(state.player.xp)} / ${state.player.xpToNext}`;
+
+        this.elements.level.textContent = `Level: ${this.game.player.level}`;
+        this.elements.xp.textContent =
+            `XP: ${Math.floor(this.game.player.stats.xp)} / ${this.game.player.stats.xpToNext}`;
     }
 
     showWaveIndicator(waveNum) {
@@ -115,17 +115,17 @@ class UIManager {
 
     handleUpgradeSelection(upgrade) {
         // Apply the upgrade
-        upgrade.apply(this.game.state);
-        
+        upgrade.apply(this.game);
+
         // Decrease pending upgrades
         this.game.state.upgradesPending--;
-        
+
         // Hide menu
         this.hideUpgradeMenu();
-        
+
         // Update UI if needed
         this.updateHealthBar();
-        
+
         // Check if we should unpause
         if (this.game.state.upgradesPending <= 0) {
             this.game.togglePause();

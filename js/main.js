@@ -60,17 +60,17 @@ window.addEventListener('DOMContentLoaded', () => {
         window.debugCommands = {
             // Give XP
             giveXP: (amount = 100) => {
-                game.state.player.xp += amount;
+                game.player.stats.xp += amount;
                 console.log(`Added ${amount} XP`);
             },
-            
+
             // Set health
             setHealth: (amount) => {
-                game.state.player.health = Math.min(amount, game.state.player.maxHealth);
+                game.player.stats.health = Math.min(amount, game.player.stats.maxHealth);
                 game.ui.updateHealthBar();
                 console.log(`Health set to ${amount}`);
             },
-            
+
             // Skip to wave
             skipToWave: (waveNum) => {
                 game.state.currentWave = waveNum;
@@ -78,23 +78,26 @@ window.addEventListener('DOMContentLoaded', () => {
                 game.ui.showWaveIndicator(waveNum);
                 console.log(`Skipped to wave ${waveNum}`);
             },
-            
+
             // Clear enemies
             clearEnemies: () => {
-                game.state.enemies.forEach(enemy => enemy.dispose());
+                game.state.enemies.forEach(enemy => {
+                    if (enemy.destroy) enemy.destroy();
+                    else if (enemy.dispose) enemy.dispose();
+                });
                 game.state.enemies = [];
                 console.log('All enemies cleared');
             },
-            
+
             // God mode
             godMode: () => {
-                game.state.player.health = 99999;
-                game.state.player.maxHealth = 99999;
-                game.state.player.damage = 9999;
+                game.player.stats.health = 99999;
+                game.player.stats.maxHealth = 99999;
+                game.player.stats.damage = 9999;
                 game.ui.updateHealthBar();
                 console.log('God mode activated');
             },
-            
+
             // Spawn specific enemy
             spawnEnemy: (type = 'basic', count = 1) => {
                 for (let i = 0; i < count; i++) {
@@ -118,7 +121,7 @@ window.addEventListener('DOMContentLoaded', () => {
             - debugCommands.godMode()
             - debugCommands.spawnEnemy(type, count)
             
-            Enemy types: basic, fast, tank, swarm
+            Enemy types: basic, fast, tank, explosive, ranged, boss
         `);
     }
     
