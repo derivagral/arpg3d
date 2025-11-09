@@ -308,10 +308,60 @@ const CONFIG = {
             emissive: new BABYLON.Color3(0.5, 0.1, 0.1),
             dropChance: 0.1
         },
+        item: {
+            size: 0.5,
+            color: new BABYLON.Color3(0.8, 0.6, 1),
+            emissive: new BABYLON.Color3(0.4, 0.3, 0.5)
+        },
         floatSpeed: 500, // ms for float cycle
         floatHeight: 0.1,
         rotationSpeed: 0.05,
         magnetSpeed: 0.3
+    },
+
+    items: {
+        // Base drop chance per enemy type
+        dropChances: {
+            basic: 0.05,    // 5% drop chance
+            fast: 0.08,     // 8% drop chance
+            tank: 0.12,     // 12% drop chance
+            swarm: 0.03     // 3% drop chance
+        },
+
+        // Rarity colors for items
+        rarities: {
+            common: {
+                color: new BABYLON.Color3(0.8, 0.8, 0.8),
+                emissive: new BABYLON.Color3(0.4, 0.4, 0.4),
+                weight: 60
+            },
+            uncommon: {
+                color: new BABYLON.Color3(0.2, 1, 0.2),
+                emissive: new BABYLON.Color3(0.1, 0.5, 0.1),
+                weight: 25
+            },
+            rare: {
+                color: new BABYLON.Color3(0.3, 0.5, 1),
+                emissive: new BABYLON.Color3(0.15, 0.25, 0.5),
+                weight: 10
+            },
+            epic: {
+                color: new BABYLON.Color3(0.8, 0.2, 1),
+                emissive: new BABYLON.Color3(0.4, 0.1, 0.5),
+                weight: 4
+            },
+            legendary: {
+                color: new BABYLON.Color3(1, 0.6, 0.1),
+                emissive: new BABYLON.Color3(0.5, 0.3, 0.05),
+                weight: 1
+            }
+        },
+
+        // Generic item icon (text symbol for now)
+        genericIcon: '⬡',
+
+        // Equipment slot types
+        slotTypes: ['head', 'chest', 'hands', 'legs', 'feet', 'weapon', 'offhand', 'ring1', 'ring2', 'amulet']
     },
     
     progression: {
