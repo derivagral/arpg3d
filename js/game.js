@@ -16,6 +16,7 @@ class Game {
         this.projectileManager = new ProjectileManager(this);
         this.pickupManager = new PickupManager(this);
         this.spawnManager = new SpawnManager(this, CONFIG.spawn);
+        this.inventoryManager = new InventoryManager();
 
         // Game state
         this.state = {
@@ -128,6 +129,13 @@ class Game {
                 this.player.takeDamage(enemy.damage);
                 this.ui.updateHealthBar();
                 this.pickupManager.createPickup(enemy.mesh.position, 'xp', enemy.xpValue);
+
+                // Check for item drop
+                if (ItemGenerator.shouldDropItem(enemy.type)) {
+                    const item = ItemGenerator.generateItem();
+                    this.pickupManager.createPickup(enemy.mesh.position, 'item', item);
+                }
+
                 enemy.destroy();
                 return false;
             }
@@ -148,6 +156,12 @@ class Game {
                 this.pickupManager.createPickup(position, 'xp', enemy.xpValue);
                 if (Math.random() < CONFIG.pickups.health.dropChance) {
                     this.pickupManager.createPickup(position, 'health');
+                }
+
+                // Check for item drop
+                if (ItemGenerator.shouldDropItem(enemy.type)) {
+                    const item = ItemGenerator.generateItem();
+                    this.pickupManager.createPickup(position, 'item', item);
                 }
             },
             // onLifeSteal callback
@@ -191,7 +205,15 @@ class Game {
             (value) => {
                 this.player.heal(value);
                 this.ui.updateHealthBar();
-            }
+            },
+            // onItemCollected callback
+            (item) => {
+                if (this.inventoryManager.addItem(item)) {
+                    this.ui.updateInventoryDisplay();
+                }
+            },
+            // inventoryFull flag
+            this.inventoryManager.isFull()
         );
     }
 

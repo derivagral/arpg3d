@@ -23,6 +23,7 @@ class UIManager {
             upgradeOptions: document.getElementById('upgradeOptions'),
             inventoryScreen: document.getElementById('inventoryScreen'),
             inventoryGrid: document.getElementById('inventoryGrid'),
+            equipmentGrid: document.getElementById('equipmentGrid'),
             invLevel: document.getElementById('inv-level'),
             invHealth: document.getElementById('inv-health'),
             invDamage: document.getElementById('inv-damage'),
@@ -35,8 +36,9 @@ class UIManager {
             invRegen: document.getElementById('inv-regen')
         };
 
-        // Initialize inventory slots
+        // Initialize inventory and equipment slots
         this.initializeInventorySlots();
+        this.initializeEquipmentSlots();
     }
 
     initializeInventorySlots() {
@@ -47,8 +49,98 @@ class UIManager {
             slot.className = 'inventory-slot empty';
             slot.innerHTML = '<div class="inventory-slot-icon">□</div>';
             slot.dataset.slotIndex = i;
+
+            // Add click handler for equipping items
+            slot.addEventListener('click', () => {
+                if (this.game.inventoryManager) {
+                    const item = this.game.inventoryManager.getItem(i);
+                    if (item) {
+                        this.game.inventoryManager.equipItem(i);
+                        this.updateInventoryDisplay();
+                    }
+                }
+            });
+
             this.elements.inventoryGrid.appendChild(slot);
         }
+    }
+
+    initializeEquipmentSlots() {
+        const slotTypes = CONFIG.items.slotTypes;
+
+        slotTypes.forEach(slotType => {
+            const slot = document.createElement('div');
+            slot.className = 'equipment-slot empty';
+            slot.innerHTML = `
+                <div class="equipment-slot-icon">□</div>
+                <div class="equipment-slot-label">${slotType}</div>
+            `;
+            slot.dataset.slotType = slotType;
+
+            // Add click handler for unequipping items
+            slot.addEventListener('click', () => {
+                if (this.game.inventoryManager) {
+                    this.game.inventoryManager.unequipItem(slotType);
+                    this.updateInventoryDisplay();
+                }
+            });
+
+            this.elements.equipmentGrid.appendChild(slot);
+        });
+    }
+
+    updateInventoryDisplay() {
+        // Update inventory slots
+        const inventorySlots = this.elements.inventoryGrid.children;
+        for (let i = 0; i < inventorySlots.length; i++) {
+            const slot = inventorySlots[i];
+            const item = this.game.inventoryManager.getItem(i);
+
+            if (item) {
+                slot.className = 'inventory-slot';
+                const icon = slot.querySelector('.inventory-slot-icon');
+                icon.textContent = item.icon;
+                icon.style.color = this.rgbToHex(item.getRarityColor());
+            } else {
+                slot.className = 'inventory-slot empty';
+                const icon = slot.querySelector('.inventory-slot-icon');
+                icon.textContent = '□';
+                icon.style.color = '';
+            }
+        }
+
+        // Update equipment slots
+        const equipmentSlots = this.elements.equipmentGrid.children;
+        const equippedItems = this.game.inventoryManager.getEquippedItems();
+
+        for (let i = 0; i < equipmentSlots.length; i++) {
+            const slot = equipmentSlots[i];
+            const slotType = slot.dataset.slotType;
+            const item = equippedItems[slotType];
+
+            if (item) {
+                slot.className = 'equipment-slot';
+                const icon = slot.querySelector('.equipment-slot-icon');
+                icon.textContent = item.icon;
+                icon.style.color = this.rgbToHex(item.getRarityColor());
+            } else {
+                slot.className = 'equipment-slot empty';
+                const icon = slot.querySelector('.equipment-slot-icon');
+                icon.textContent = '□';
+                icon.style.color = '';
+            }
+        }
+
+        // Update stats display to reflect equipment bonuses
+        this.updateInventoryStats();
+    }
+
+    rgbToHex(color3) {
+        // Convert Babylon.js Color3 to hex string
+        const r = Math.round(color3.r * 255);
+        const g = Math.round(color3.g * 255);
+        const b = Math.round(color3.b * 255);
+        return `rgb(${r}, ${g}, ${b})`;
     }
 
     updateHealthBar() {

@@ -16,8 +16,15 @@ class PickupManager {
         pickup.position.y = 0.5;
 
         const pickupMat = new BABYLON.StandardMaterial("pickupMat", this.game.scene);
-        pickupMat.diffuseColor = CONFIG.pickups[type].color;
-        pickupMat.emissiveColor = CONFIG.pickups[type].emissive;
+
+        // For items, use rarity color; otherwise use default pickup color
+        if (type === 'item' && value && value.rarityConfig) {
+            pickupMat.diffuseColor = value.rarityConfig.color;
+            pickupMat.emissiveColor = value.rarityConfig.emissive;
+        } else {
+            pickupMat.diffuseColor = CONFIG.pickups[type].color;
+            pickupMat.emissiveColor = CONFIG.pickups[type].emissive;
+        }
         pickup.material = pickupMat;
 
         pickup.type = type;
@@ -28,7 +35,7 @@ class PickupManager {
         return pickup;
     }
 
-    update(playerMesh, playerStats, onXPCollected, onHealthCollected) {
+    update(playerMesh, playerStats, onXPCollected, onHealthCollected, onItemCollected, inventoryFull) {
         if (this.game.state.paused) return;
 
         this.pickups = this.pickups.filter(pickup => {
@@ -43,8 +50,9 @@ class PickupManager {
                 playerMesh.position
             );
 
-            // Magnetic attraction
-            if (distToPlayer < playerStats.magnetRadius) {
+            // Magnetic attraction (skip for items if inventory is full)
+            const shouldAttract = pickup.type !== 'item' || !inventoryFull;
+            if (shouldAttract && distToPlayer < playerStats.magnetRadius) {
                 const direction = playerMesh.position.subtract(pickup.position);
                 direction.y = 0;
                 direction.normalize();
@@ -59,12 +67,21 @@ class PickupManager {
             if (distToPlayer < playerStats.pickupRadius) {
                 if (pickup.type === 'xp') {
                     if (onXPCollected) onXPCollected(pickup.value);
+                    pickup.dispose();
+                    return false;
                 } else if (pickup.type === 'health') {
                     if (onHealthCollected) onHealthCollected(pickup.value);
+                    pickup.dispose();
+                    return false;
+                } else if (pickup.type === 'item') {
+                    // Only collect if inventory has space
+                    if (!inventoryFull && onItemCollected) {
+                        onItemCollected(pickup.value);
+                        pickup.dispose();
+                        return false;
+                    }
+                    // Keep item on ground if inventory is full
                 }
-
-                pickup.dispose();
-                return false;
             }
 
             return true;

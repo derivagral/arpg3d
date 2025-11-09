@@ -1,7 +1,8 @@
 // Base Enemy Class
 class Enemy {
-    constructor(name, config, scene) {
+    constructor(name, config, scene, type = null) {
         this.name = name;
+        this.type = type || name.toLowerCase(); // Type for item drops
         this.health = config.health;
         this.maxHealth = config.health;
         this.speed = config.speed;
@@ -14,7 +15,7 @@ class Enemy {
         this.mesh = null;
         this.lastAction = 0;
         this.actionCooldown = config.actionCooldown || 1000;
-        
+
         this.createMesh();
     }
     
