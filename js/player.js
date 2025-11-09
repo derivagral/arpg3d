@@ -17,6 +17,7 @@ class Player {
             attackRange: CONFIG.player.initialAttackRange,
             xp: 0,
             xpToNext: CONFIG.progression.xpBase,
+            gold: 0,
             pickupRadius: CONFIG.player.pickupRadius,
             magnetRadius: CONFIG.player.magnetRadius,
             lifeSteal: 0,
@@ -175,6 +176,10 @@ class Player {
         }
 
         return levelsGained;
+    }
+
+    addGold(amount) {
+        this.stats.gold += amount;
     }
 
     levelUp() {

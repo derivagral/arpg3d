@@ -130,6 +130,14 @@ class Game {
                 this.ui.updateHealthBar();
                 this.pickupManager.createPickup(enemy.mesh.position, 'xp', enemy.xpValue);
 
+                // Check for gold drop
+                const goldDropChance = CONFIG.currency.dropChances[enemy.type] || 0.3;
+                if (Math.random() < goldDropChance) {
+                    const goldRange = CONFIG.currency.goldAmounts[enemy.type] || { min: 1, max: 3 };
+                    const goldAmount = Math.floor(Math.random() * (goldRange.max - goldRange.min + 1)) + goldRange.min;
+                    this.pickupManager.createPickup(enemy.mesh.position, 'gold', goldAmount);
+                }
+
                 // Check for item drop
                 if (ItemGenerator.shouldDropItem(enemy.type)) {
                     const item = ItemGenerator.generateItem();
@@ -156,6 +164,14 @@ class Game {
                 this.pickupManager.createPickup(position, 'xp', enemy.xpValue);
                 if (Math.random() < CONFIG.pickups.health.dropChance) {
                     this.pickupManager.createPickup(position, 'health');
+                }
+
+                // Check for gold drop
+                const goldDropChance = CONFIG.currency.dropChances[enemy.type] || 0.3;
+                if (Math.random() < goldDropChance) {
+                    const goldRange = CONFIG.currency.goldAmounts[enemy.type] || { min: 1, max: 3 };
+                    const goldAmount = Math.floor(Math.random() * (goldRange.max - goldRange.min + 1)) + goldRange.min;
+                    this.pickupManager.createPickup(position, 'gold', goldAmount);
                 }
 
                 // Check for item drop
@@ -211,6 +227,10 @@ class Game {
                 if (this.inventoryManager.addItem(item)) {
                     this.ui.updateInventoryDisplay();
                 }
+            },
+            // onGoldCollected callback
+            (value) => {
+                this.player.addGold(value);
             },
             // inventoryFull flag
             this.inventoryManager.isFull()

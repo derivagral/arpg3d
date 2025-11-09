@@ -313,10 +313,33 @@ const CONFIG = {
             color: new BABYLON.Color3(0.8, 0.6, 1),
             emissive: new BABYLON.Color3(0.4, 0.3, 0.5)
         },
+        gold: {
+            size: 0.4,
+            value: 1,
+            color: new BABYLON.Color3(1, 0.84, 0),  // Golden color
+            emissive: new BABYLON.Color3(0.5, 0.42, 0)
+        },
         floatSpeed: 500, // ms for float cycle
         floatHeight: 0.1,
         rotationSpeed: 0.05,
         magnetSpeed: 0.3
+    },
+
+    currency: {
+        // Gold drop chances per enemy type
+        dropChances: {
+            basic: 0.3,     // 30% drop chance
+            fast: 0.25,     // 25% drop chance
+            tank: 0.5,      // 50% drop chance
+            swarm: 0.15     // 15% drop chance
+        },
+        // Gold amount ranges per enemy type
+        goldAmounts: {
+            basic: { min: 1, max: 3 },
+            fast: { min: 2, max: 4 },
+            tank: { min: 5, max: 10 },
+            swarm: { min: 1, max: 2 }
+        }
     },
 
     items: {
