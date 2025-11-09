@@ -20,8 +20,35 @@ class UIManager {
             waveMessage: document.getElementById('waveMessage'),
             pauseOverlay: document.getElementById('pauseOverlay'),
             upgradeMenu: document.getElementById('upgradeMenu'),
-            upgradeOptions: document.getElementById('upgradeOptions')
+            upgradeOptions: document.getElementById('upgradeOptions'),
+            inventoryScreen: document.getElementById('inventoryScreen'),
+            inventoryGrid: document.getElementById('inventoryGrid'),
+            invLevel: document.getElementById('inv-level'),
+            invHealth: document.getElementById('inv-health'),
+            invDamage: document.getElementById('inv-damage'),
+            invAttackSpeed: document.getElementById('inv-attackSpeed'),
+            invSpeed: document.getElementById('inv-speed'),
+            invRange: document.getElementById('inv-range'),
+            invCrit: document.getElementById('inv-crit'),
+            invLifesteal: document.getElementById('inv-lifesteal'),
+            invPiercing: document.getElementById('inv-piercing'),
+            invRegen: document.getElementById('inv-regen')
         };
+
+        // Initialize inventory slots
+        this.initializeInventorySlots();
+    }
+
+    initializeInventorySlots() {
+        const slotsCount = 24; // 24 inventory slots for now
+
+        for (let i = 0; i < slotsCount; i++) {
+            const slot = document.createElement('div');
+            slot.className = 'inventory-slot empty';
+            slot.innerHTML = '<div class="inventory-slot-icon">□</div>';
+            slot.dataset.slotIndex = i;
+            this.elements.inventoryGrid.appendChild(slot);
+        }
     }
 
     updateHealthBar() {
@@ -176,5 +203,31 @@ class UIManager {
     updateDebugInfo(fps) {
         if (!this.debugElement) return;
         this.debugElement.textContent = `FPS: ${fps}`;
+    }
+
+    showInventory() {
+        this.elements.inventoryScreen.classList.add('show');
+        this.updateInventoryStats();
+    }
+
+    hideInventory() {
+        this.elements.inventoryScreen.classList.remove('show');
+    }
+
+    updateInventoryStats() {
+        const player = this.game.player;
+        const stats = player.stats;
+
+        // Update all stat displays
+        this.elements.invLevel.textContent = player.level;
+        this.elements.invHealth.textContent = `${Math.floor(stats.health)} / ${stats.maxHealth}`;
+        this.elements.invDamage.textContent = stats.damage;
+        this.elements.invAttackSpeed.textContent = `${stats.attackSpeed}ms`;
+        this.elements.invSpeed.textContent = stats.speed.toFixed(2);
+        this.elements.invRange.textContent = stats.attackRange;
+        this.elements.invCrit.textContent = `${(stats.critChance * 100).toFixed(0)}%`;
+        this.elements.invLifesteal.textContent = stats.lifeSteal;
+        this.elements.invPiercing.textContent = stats.piercing;
+        this.elements.invRegen.textContent = `${stats.regen}/s`;
     }
 }
