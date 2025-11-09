@@ -22,7 +22,8 @@ class Game {
             enemies: [],
             startTime: Date.now(),
             paused: false,
-            upgradesPending: 0
+            upgradesPending: 0,
+            inventoryOpen: false
         };
 
         // UI
@@ -37,9 +38,20 @@ class Game {
         window.addEventListener("keydown", (e) => {
             const key = e.key.toLowerCase();
 
-            // Pause on ESC or P
+            // Toggle inventory on I
+            if (key === 'i') {
+                this.toggleInventory();
+                return;
+            }
+
+            // Pause on ESC or P (but not if inventory is open)
             if (key === 'escape' || key === 'p') {
-                this.togglePause();
+                if (this.state.inventoryOpen) {
+                    // ESC closes inventory
+                    this.toggleInventory();
+                } else {
+                    this.togglePause();
+                }
                 return;
             }
         });
@@ -58,6 +70,20 @@ class Game {
         } else {
             this.ui.hidePauseOverlay();
             this.ui.hideUpgradeMenu();
+        }
+    }
+
+    toggleInventory() {
+        this.state.inventoryOpen = !this.state.inventoryOpen;
+
+        if (this.state.inventoryOpen) {
+            // Open inventory and pause the game
+            this.state.paused = true;
+            this.ui.showInventory();
+        } else {
+            // Close inventory and unpause the game
+            this.state.paused = false;
+            this.ui.hideInventory();
         }
     }
 

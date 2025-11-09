@@ -57,6 +57,65 @@
         <div class="upgrade-hint">Click to select</div>
     </div>
 
+    <!-- Inventory Screen -->
+    <div id="inventoryScreen">
+        <div class="inventory-container">
+            <!-- Left side: Stats -->
+            <div class="inventory-stats">
+                <h2>Character Stats</h2>
+                <div class="stat-line">
+                    <span class="stat-label">Level:</span>
+                    <span class="stat-value" id="inv-level">1</span>
+                </div>
+                <div class="stat-line">
+                    <span class="stat-label">Health:</span>
+                    <span class="stat-value" id="inv-health">100 / 100</span>
+                </div>
+                <div class="stat-line">
+                    <span class="stat-label">Damage:</span>
+                    <span class="stat-value" id="inv-damage">10</span>
+                </div>
+                <div class="stat-line">
+                    <span class="stat-label">Attack Speed:</span>
+                    <span class="stat-value" id="inv-attackSpeed">1000ms</span>
+                </div>
+                <div class="stat-line">
+                    <span class="stat-label">Speed:</span>
+                    <span class="stat-value" id="inv-speed">0.15</span>
+                </div>
+                <div class="stat-line">
+                    <span class="stat-label">Attack Range:</span>
+                    <span class="stat-value" id="inv-range">8</span>
+                </div>
+                <div class="stat-line">
+                    <span class="stat-label">Crit Chance:</span>
+                    <span class="stat-value" id="inv-crit">0%</span>
+                </div>
+                <div class="stat-line">
+                    <span class="stat-label">Life Steal:</span>
+                    <span class="stat-value" id="inv-lifesteal">0</span>
+                </div>
+                <div class="stat-line">
+                    <span class="stat-label">Piercing:</span>
+                    <span class="stat-value" id="inv-piercing">0</span>
+                </div>
+                <div class="stat-line">
+                    <span class="stat-label">Regen:</span>
+                    <span class="stat-value" id="inv-regen">0/s</span>
+                </div>
+            </div>
+
+            <!-- Right side: Inventory -->
+            <div class="inventory-items">
+                <h2>Inventory</h2>
+                <div class="inventory-grid" id="inventoryGrid">
+                    <!-- Inventory slots will be generated here -->
+                </div>
+            </div>
+        </div>
+        <div class="inventory-hint">Press 'I' to close</div>
+    </div>
+
     <!-- Babylon.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/babylonjs/7.0.0/babylon.js"></script>
     
