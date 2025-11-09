@@ -35,7 +35,7 @@ class PickupManager {
         return pickup;
     }
 
-    update(playerMesh, playerStats, onXPCollected, onHealthCollected, onItemCollected, inventoryFull) {
+    update(playerMesh, playerStats, onXPCollected, onHealthCollected, onItemCollected, onGoldCollected, inventoryFull) {
         if (this.game.state.paused) return;
 
         this.pickups = this.pickups.filter(pickup => {
@@ -71,6 +71,10 @@ class PickupManager {
                     return false;
                 } else if (pickup.type === 'health') {
                     if (onHealthCollected) onHealthCollected(pickup.value);
+                    pickup.dispose();
+                    return false;
+                } else if (pickup.type === 'gold') {
+                    if (onGoldCollected) onGoldCollected(pickup.value);
                     pickup.dispose();
                     return false;
                 } else if (pickup.type === 'item') {

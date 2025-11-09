@@ -25,6 +25,7 @@ class UIManager {
             inventoryGrid: document.getElementById('inventoryGrid'),
             equipmentGrid: document.getElementById('equipmentGrid'),
             invLevel: document.getElementById('inv-level'),
+            invGold: document.getElementById('inv-gold'),
             invHealth: document.getElementById('inv-health'),
             invDamage: document.getElementById('inv-damage'),
             invAttackSpeed: document.getElementById('inv-attackSpeed'),
@@ -312,6 +313,7 @@ class UIManager {
 
         // Update all stat displays
         this.elements.invLevel.textContent = player.level;
+        this.elements.invGold.textContent = stats.gold || 0;
         this.elements.invHealth.textContent = `${Math.floor(stats.health)} / ${stats.maxHealth}`;
         this.elements.invDamage.textContent = stats.damage;
         this.elements.invAttackSpeed.textContent = `${stats.attackSpeed}ms`;
