@@ -17,6 +17,7 @@ class Game {
         this.pickupManager = new PickupManager(this);
         this.spawnManager = new SpawnManager(this, CONFIG.spawn);
         this.inventoryManager = new InventoryManager();
+        this.areaManager = new AreaManager(this);
 
         // Game state
         this.state = {
@@ -27,9 +28,14 @@ class Game {
             inventoryOpen: false
         };
 
+        // Shorthand for enemies (for compatibility)
+        this.enemies = this.state.enemies;
+
         // UI
         this.ui = new UIManager(this);
-        this.ui.showWaveIndicator(1);
+
+        // Initialize area system (starts at home base)
+        this.areaManager.initialize();
 
         this.setupInput();
         this.startGameLoop();
@@ -293,6 +299,10 @@ class Game {
     startGameLoop() {
         this.scene.registerBeforeRender(() => {
             const currentTime = Date.now();
+            const deltaTime = this.engine.getDeltaTime();
+
+            // Update area manager (handles portals and transitions)
+            this.areaManager.update(deltaTime);
 
             this.updatePlayer();
             this.updateWaveSystem(currentTime);

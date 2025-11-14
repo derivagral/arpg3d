@@ -46,12 +46,20 @@ class SpawnManager {
 
         // Spawn event queue (for future timed/triggered events)
         this.spawnEvents = [];
+
+        // Control flag for area-based spawning
+        this.canSpawn = true;
     }
 
     /**
      * Main update loop - call every frame
      */
     update(currentTime, player, enemies) {
+        // Don't spawn if disabled (e.g., in home base or timer expired)
+        if (!this.canSpawn) {
+            return;
+        }
+
         // Update wave system
         this.updateWaveSystem(currentTime);
 
