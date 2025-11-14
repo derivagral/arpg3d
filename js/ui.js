@@ -10,6 +10,8 @@ class UIManager {
         this.elements = {
             healthFill: document.getElementById('healthFill'),
             cooldownFill: document.getElementById('cooldownFill'),
+            area: document.getElementById('area'),
+            areaTimer: document.getElementById('areaTimer'),
             wave: document.getElementById('wave'),
             enemyCount: document.getElementById('enemyCount'),
             timer: document.getElementById('timer'),
@@ -167,6 +169,26 @@ class UIManager {
     updateStats() {
         const state = this.game.state;
 
+        // Update area display
+        if (this.game.areaManager) {
+            const currentArea = this.game.areaManager.getCurrentArea();
+            this.elements.area.textContent = `Area: ${currentArea.name}`;
+
+            // Show timer only in mob area
+            if (this.game.areaManager.isInCombatArea()) {
+                const remainingTime = this.game.areaManager.getRemainingTime();
+                if (remainingTime > 0) {
+                    this.elements.areaTimer.textContent = `Time Left: ${this.game.formatTime(remainingTime)}`;
+                    this.elements.areaTimer.style.display = 'block';
+                } else {
+                    this.elements.areaTimer.textContent = 'Return portal open!';
+                    this.elements.areaTimer.style.color = '#66ff66';
+                }
+            } else {
+                this.elements.areaTimer.style.display = 'none';
+            }
+        }
+
         this.elements.wave.textContent = `Wave: ${this.game.spawnManager.currentWave}`;
         this.elements.enemyCount.textContent = `Enemies: ${state.enemies.length}`;
 
@@ -178,14 +200,23 @@ class UIManager {
             `XP: ${Math.floor(this.game.player.stats.xp)} / ${this.game.player.stats.xpToNext}`;
     }
 
-    showWaveIndicator(waveNum) {
-        const waveConfig = CONFIG.waves[waveNum] || CONFIG.waves[8];
-        
-        this.elements.waveNumber.textContent = waveNum;
-        this.elements.waveMessage.textContent = waveConfig.message;
-        
+    showWaveIndicator(waveNumOrMessage) {
+        // Support both wave numbers and custom messages
+        if (typeof waveNumOrMessage === 'number') {
+            const waveConfig = CONFIG.waves[waveNumOrMessage] || CONFIG.waves[8];
+            this.elements.waveIndicator.innerHTML = `
+                <h2>Wave ${waveNumOrMessage}</h2>
+                <p>${waveConfig.message}</p>
+            `;
+        } else {
+            // Custom message (like area transitions)
+            this.elements.waveIndicator.innerHTML = `
+                <h2>${waveNumOrMessage}</h2>
+            `;
+        }
+
         this.elements.waveIndicator.classList.add('show');
-        
+
         setTimeout(() => {
             this.elements.waveIndicator.classList.remove('show');
         }, CONFIG.ui.waveIndicatorDuration);
