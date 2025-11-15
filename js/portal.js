@@ -125,13 +125,15 @@ class Portal {
             tessellation: 32
         }, this.scene);
 
-        ring.position = new BABYLON.Vector3(this.position.x, 0.1, this.position.z);
+        ring.position = new BABYLON.Vector3(this.position.x, 0.35, this.position.z);
         ring.rotation.x = Math.PI / 2;
 
         const ringMat = new BABYLON.StandardMaterial("ringMat_" + this.destination, this.scene);
         ringMat.emissiveColor = this.config.glowColor;
         ringMat.alpha = 0.6;
+        ringMat.disableDepthWrite = true; // Prevent Z-fighting with transparent materials
         ring.material = ringMat;
+        ring.renderingGroupId = 1; // Render after opaque objects
         this.scene.glowLayer.addIncludedOnlyMesh(ring);
 
         this.groundRing = ring;

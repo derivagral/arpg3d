@@ -4,6 +4,7 @@ class SceneManager {
         this.engine = engine;
         this.scene = null;
         this.camera = null;
+        this.decorativeTiles = []; // Track tiles for cleanup
 
         this.initScene();
     }
@@ -74,7 +75,20 @@ class SceneManager {
             const tileMat = new BABYLON.StandardMaterial("tileMat", this.scene);
             tileMat.diffuseColor = new BABYLON.Color3(0.1, 0.2, 0.1);
             tile.material = tileMat;
+
+            // Track tile for cleanup
+            this.decorativeTiles.push(tile);
         }
+    }
+
+    cleanupDecorativeTiles() {
+        // Dispose all decorative tiles
+        this.decorativeTiles.forEach(tile => {
+            if (tile) {
+                tile.dispose();
+            }
+        });
+        this.decorativeTiles = [];
     }
 
     getScene() {

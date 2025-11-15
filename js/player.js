@@ -80,13 +80,15 @@ class Player {
             },
             this.scene
         );
-        rangeIndicator.position.y = 0.05;
+        rangeIndicator.position.y = 0.1;
         rangeIndicator.parent = this.mesh;
 
         const rangeMat = new BABYLON.StandardMaterial("rangeMat", this.scene);
         rangeMat.diffuseColor = new BABYLON.Color3(0.2, 0.4, 0.8);
         rangeMat.alpha = 0.2;
+        rangeMat.disableDepthWrite = true; // Prevent Z-fighting with transparent materials
         rangeIndicator.material = rangeMat;
+        rangeIndicator.renderingGroupId = 1; // Render after opaque objects
 
         this.rangeIndicator = rangeIndicator;
     }
