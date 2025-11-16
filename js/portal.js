@@ -73,12 +73,8 @@ class Portal {
     createParticles() {
         const particleSystem = new BABYLON.ParticleSystem("portalParticles_" + this.destination, 200, this.scene);
 
-        // Texture (optional - particles will work without it)
-        try {
-            particleSystem.particleTexture = new BABYLON.Texture("textures/flare.png", this.scene);
-        } catch (e) {
-            // Texture not available, particles will render as solid colors
-        }
+        // Create procedural flare texture
+        particleSystem.particleTexture = this.createFlareTexture();
 
         // Emitter
         particleSystem.emitter = this.position.clone();
@@ -115,6 +111,35 @@ class Portal {
 
         particleSystem.start();
         this.particleSystem = particleSystem;
+    }
+
+    createFlareTexture() {
+        // Create a procedural flare texture for particles
+        const textureSize = 128;
+        const dynamicTexture = new BABYLON.DynamicTexture(
+            "flareTexture_" + this.destination,
+            textureSize,
+            this.scene,
+            false
+        );
+
+        const context = dynamicTexture.getContext();
+        const centerX = textureSize / 2;
+        const centerY = textureSize / 2;
+        const radius = textureSize / 2;
+
+        // Create radial gradient
+        const gradient = context.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius);
+        gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
+        gradient.addColorStop(0.3, 'rgba(255, 255, 255, 0.8)');
+        gradient.addColorStop(0.6, 'rgba(255, 255, 255, 0.3)');
+        gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+
+        context.fillStyle = gradient;
+        context.fillRect(0, 0, textureSize, textureSize);
+
+        dynamicTexture.update();
+        return dynamicTexture;
     }
 
     createGroundMarker() {
