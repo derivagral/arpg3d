@@ -153,7 +153,7 @@ class AreaManager {
                 depth: tileSize
             }, scene);
 
-            tile.position = new BABYLON.Vector3(x, 0.05, z);
+            tile.position = new BABYLON.Vector3(x, 0.2, z);
 
             const tileMat = new BABYLON.StandardMaterial(`tileMat_${i}`, scene);
             tileMat.diffuseColor = new BABYLON.Color3(
@@ -318,6 +318,11 @@ class AreaManager {
     }
 
     cleanupArea() {
+        // Clear original decorative tiles from scene initialization
+        if (this.game.sceneManager && this.game.sceneManager.cleanupDecorativeTiles) {
+            this.game.sceneManager.cleanupDecorativeTiles();
+        }
+
         // Clear all enemies
         if (this.game.enemies) {
             this.game.enemies.forEach(enemy => {
