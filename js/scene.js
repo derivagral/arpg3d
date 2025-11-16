@@ -65,16 +65,18 @@ class SceneManager {
         for (let i = 0; i < 15; i++) {
             const tile = BABYLON.MeshBuilder.CreateBox(
                 "tile",
-                {width: 3, height: 0.01, depth: 3},
+                {width: 3, height: 0.1, depth: 3},
                 this.scene
             );
             tile.position.x = (Math.random() - 0.5) * 50;
             tile.position.z = (Math.random() - 0.5) * 50;
-            tile.position.y = 0.01;
+            tile.position.y = 0.25; // Raised to prevent Z-fighting with ground
 
             const tileMat = new BABYLON.StandardMaterial("tileMat", this.scene);
             tileMat.diffuseColor = new BABYLON.Color3(0.1, 0.2, 0.1);
+            tileMat.disableDepthWrite = true; // Prevent Z-fighting
             tile.material = tileMat;
+            tile.renderingGroupId = 1; // Render after opaque objects
 
             // Track tile for cleanup
             this.decorativeTiles.push(tile);

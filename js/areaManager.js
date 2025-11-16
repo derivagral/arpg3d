@@ -161,7 +161,9 @@ class AreaManager {
                 Math.random() * 0.2 + 0.45,
                 Math.random() * 0.2 + 0.15
             );
+            tileMat.disableDepthWrite = true; // Prevent Z-fighting
             tile.material = tileMat;
+            tile.renderingGroupId = 1; // Render after opaque objects
         }
     }
 
