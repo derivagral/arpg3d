@@ -140,16 +140,12 @@ window.addEventListener('DOMContentLoaded', () => {
 })
 
 // ── Sync sim state → Babylon.js render layer ──────────────────────────────
-// Only syncs data the UI cares about. Mesh positions are still handled by
-// the legacy Game loop — that coexistence is intentional for now.
-function syncSimToRender(simState, game) {
-  const sp = simState.player
-
-  // Sync HP into legacy player stats so the health bar reflects sim values
-  if (game.player?.stats) {
-    game.player.stats.health    = Math.round(sp.hp)
-    game.player.stats.maxHealth = sp.maxHp
-  }
+// The sim and the legacy game are currently parallel — the legacy game owns
+// its own health, enemies, and combat. Don't cross-write health here or the
+// legacy checkGameOver() will trigger when the sim player dies.
+// Expand this as each system gets ported from legacy to sim.
+function syncSimToRender(_simState, _game) {
+  // Nothing yet — sim surfaces via window.__sim() in dev console
 }
 
 function handleRunOver(simState, game) {

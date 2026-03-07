@@ -45,8 +45,8 @@ class SceneManager {
     }
 
     createEnvironment() {
-        // Main ground
-        const ground = BABYLON.MeshBuilder.CreateGround(
+        // Main ground — stored on this so areaManager can dispose/replace it
+        this.ground = BABYLON.MeshBuilder.CreateGround(
             "ground",
             {
                 width: CONFIG.world.groundSize,
@@ -59,7 +59,7 @@ class SceneManager {
         const groundMat = new BABYLON.StandardMaterial("groundMat", this.scene);
         groundMat.diffuseColor = new BABYLON.Color3(0.15, 0.25, 0.15);
         groundMat.specularColor = new BABYLON.Color3(0, 0, 0);
-        ground.material = groundMat;
+        this.ground.material = groundMat;
 
         // Add grid pattern for visual interest
         for (let i = 0; i < 15; i++) {
@@ -74,9 +74,7 @@ class SceneManager {
 
             const tileMat = new BABYLON.StandardMaterial("tileMat", this.scene);
             tileMat.diffuseColor = new BABYLON.Color3(0.1, 0.2, 0.1);
-            tileMat.disableDepthWrite = true; // Prevent Z-fighting
             tile.material = tileMat;
-            tile.renderingGroupId = 1; // Render after opaque objects
 
             // Track tile for cleanup
             this.decorativeTiles.push(tile);
