@@ -65,8 +65,11 @@ window.addEventListener('DOMContentLoaded', () => {
     // Sync key sim stats → legacy render layer so UI reflects sim state
     syncSimToRender(simState, game)
 
+    // Auto-restart sim when run ends — no alert, no interruption to the
+    // playable legacy game. Inspect the completed run via window.__sim()
+    // before it resets (it's replaced on the next frame).
     if (isRunOver(simState)) {
-      handleRunOver(simState, game)
+      simState = createState(Date.now())
     }
   })
 
@@ -146,13 +149,6 @@ window.addEventListener('DOMContentLoaded', () => {
 // Expand this as each system gets ported from legacy to sim.
 function syncSimToRender(_simState, _game) {
   // Nothing yet — sim surfaces via window.__sim() in dev console
-}
-
-function handleRunOver(simState, game) {
-  const elapsed = simState.elapsed
-  const mins = Math.floor(elapsed / 60000)
-  const secs = Math.floor((elapsed % 60000) / 1000).toString().padStart(2, '0')
-  alert(`Sim: Run over!\nReached depth: ${simState.depth}\nTime: ${mins}:${secs}`)
 }
 
 // Preserve legacy debug commands for render-layer inspection
