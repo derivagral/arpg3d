@@ -111,7 +111,7 @@ export const createState = (seed) => {
 
   return {
     seed,
-    rng,
+    rng: enemies.rng,
     tick: 0,
     elapsed: 0,
     phase: 'combat',
@@ -130,7 +130,6 @@ export const createState = (seed) => {
     gate: null,
     pity,
     log: [{ tick: 0, type: 'run_start', payload: { seed, depth: 1 } }],
-    _rngAfterSpawn: enemies.rng,
   }
 }
 
@@ -229,7 +228,7 @@ export const tick = (state, deltaMs, input = {}) => {
     const dz = -e.z
     const dist = Math.sqrt(dx * dx + dz * dz)
     if (dist < 0.5) return e  // already at player
-    const move = e.speed * deltaMs
+    const move = e.speed * (deltaMs / 16.67)  // speed is units/frame at 60fps
     return {
       ...e,
       x: e.x + (dx / dist) * move,
