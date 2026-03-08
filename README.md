@@ -1,217 +1,129 @@
-# ARPG3D - Enhanced Vampire Survivors Clone
+# arpg3d
 
-A 3D action RPG with wave-based gameplay, upgrade system, and progressive difficulty.
+A simulation-first idle ARPG built on Babylon.js. The game logic runs as pure,
+deterministic functions in `sim/` — same seed, same choices, same outcome every time.
+Babylon.js is the render layer: it reads sim state and draws meshes.
 
-## 🎮 New Features
+## Quick start
 
-### Core Gameplay
-- ✅ **Wave System**: 8 progressively harder waves with different enemy compositions
-- ✅ **Enemy Variety**: 4 enemy types (Basic, Fast, Tank, Swarm)
-- ✅ **Attack Cooldown Bar**: Visual feedback for weapon readiness
-- ✅ **Extended Attack Range**: Increased from 3 to 8 units with visual indicator
-- ✅ **Pause System**: Press ESC or P to pause the game
-- ✅ **Upgrade System**: Choose from 3 random upgrades on level up
-
-### Upgrade Options
-- **Damage Boost** (+25% damage)
-- **Rapid Fire** (-20% cooldown)
-- **Extended Range** (+30% range)
-- **Life Steal** (heal on kills)
-- **Speed Boost** (+15% movement)
-- **Max Health** (+30 HP)
-- **Magnet Power** (+50% pickup range)
-- **Critical Chance** (+15% crit chance)
-- **Piercing Shots** (hit multiple enemies)
-- **Regeneration** (+1 HP/sec)
-
-### Enemy Types
-| Type | Color | Characteristics |
-|------|-------|----------------|
-| Basic | Red | Standard stats, balanced |
-| Fast | Yellow | Quick but fragile |
-| Tank | Purple | Slow but high health |
-| Swarm | Green | Tiny, numerous, weak |
-
-### Wave Progression
-1. **Wave 1**: Basic enemies only (30s)
-2. **Wave 2**: Basic + Fast enemies (40s)
-3. **Wave 3**: More Fast enemies (45s)
-4. **Wave 4**: Tank units introduced (50s)
-5. **Wave 5**: Swarm arrives! (60s)
-6. **Wave 6**: Chaos mode (60s)
-7. **Wave 7**: Elite forces (70s)
-8. **Wave 8+**: Maximum threat - all types (80s)
-
-## 📁 Project Structure
-
-```
-project/
-├── index.html           # Main HTML with UI structure
-├── css/
-│   └── main.css        # All styles including animations
-├── js/
-│   ├── config.js       # Game configuration and balance
-│   ├── game.js         # Core game logic and mechanics
-│   ├── ui.js           # UI management and updates
-│   └── main.js         # Entry point and debug tools
-└── README.md           # This file
+```bash
+npm install
+npm run dev       # Vite dev server at localhost:5173
 ```
 
-## 🎯 Controls
+## Architecture
 
-- **WASD** or **Arrow Keys**: Move player
-- **ESC** or **P**: Pause game
+```
+sim/              Pure game logic — zero browser deps, Node-importable
+  rng.js          Seeded RNG (mulberry32), functional state threading
+  affixes.js      AFFIX_POOL (20 affixes), rollAffix, deriveStats
+  pity.js         Per-tag drought counters, quadratic boost
+  damage.js       Flat -> increased -> more -> crit pipeline (PoE-standard)
+  gate.js         Gate generation (2-3 options), resolution
+  engine.js       tick(state, deltaMs, input) -> newState
+  autopilot.js    Naive scoring — intentionally beatable by manual play
+
+src/              ES module entry point
+  main.js         Bootstrap: sim state + Babylon.js + dev surface
+
+js/               Legacy Babylon.js render layer (browser globals)
+  config.js       Game balance constants
+  game.js         Babylon.js game loop (coexists with sim tick)
+  player.js       Player mesh, movement, input
+  enemies.js      Enemy creation and behavior
+  ...             (14 files total)
+
+docs/             Subsystem docs for scoped context management
+  AGENTS.md       Scope map — which docs to load per task type
+  sim/            One doc per sim module (state shapes, formulas, constraints)
+  render/         Render layer contract, Babylon.js notes
+```
+
+Data flows one way: `sim/ -> render`. The render layer never writes back into sim state.
+
+## How it works
+
+The sim runs a phase machine every frame:
+
+```
+createState(seed)
+      |
+      v
+  [combat] --- wave cleared ---> [gate] --- affix picked ---> [combat] (depth+1)
+      |                                                             |
+      +------------- player hp <= 0 ----------------------------> [dead]
+```
+
+**Combat**: enemies move toward player, auto-attack fires at nearest in range,
+damage goes through the full pipeline (flat + increased + more + crit).
+
+**Gate**: player (or autopilot) picks one of 2-3 affix offers. Pity weights
+boost under-represented tags — if you haven't seen crit in 5 gates, it gets 2x weight.
+
+**Dead**: run is over. Same seed replays identically.
+
+## Controls
+
+- **WASD / Arrow Keys** — move player
+- **ESC / P** — pause
+- **I** — inventory
 - Auto-attacks nearest enemy within range
 
-## 🚀 Getting Started
+## Dev console (localhost only)
 
-### Option 1: Local Development
-```bash
-# Python 3
-python -m http.server 8000
+```js
+// Sim state (primary source of truth)
+window.__sim()                // live SimState snapshot
+window.__pickGate(0)          // manually resolve current gate (0, 1, or 2)
+window.__setAutopilot(false)  // disable autopilot for manual play
+window.__newRun(42)           // restart with specific seed
 
-# Node.js
-npx http-server
-
-# Or use VS Code Live Server extension
+// Legacy render layer
+window.__game                 // Babylon.js Game instance
+window.debugCommands          // old debug helpers (godMode, spawnEnemy, etc.)
 ```
 
-### Option 2: Direct File
-Simply open `index.html` in a modern browser (Chrome/Firefox/Edge recommended)
+## Headless simulation (Node.js)
 
-## 🛠 Debug Mode (Localhost Only)
+The sim runs without a browser:
 
-When running locally, debug commands are available in the console:
+```js
+import { createState, tick, isRunOver } from './sim/engine.js'
 
-```javascript
-// Give XP
-debugCommands.giveXP(100)
-
-// Set health
-debugCommands.setHealth(50)
-
-// Skip to wave
-debugCommands.skipToWave(5)
-
-// Clear all enemies
-debugCommands.clearEnemies()
-
-// Activate god mode
-debugCommands.godMode()
-
-// Spawn enemies
-debugCommands.spawnEnemy('tank', 3)
-```
-
-## ⚙️ Configuration
-
-Edit `js/config.js` to customize:
-- Player stats and progression
-- Enemy types and behaviors
-- Wave composition and timing
-- Upgrade effects
-- Visual settings
-
-### Key Configuration Areas
-
-#### Player Balance
-```javascript
-initialHealth: 100,
-initialDamage: 10,
-initialAttackSpeed: 1000, // ms
-initialAttackRange: 8
-```
-
-#### Wave Settings
-```javascript
-waves: {
-    1: { 
-        duration: 30000, 
-        enemies: ['basic'], 
-        spawnRate: 2000, 
-        message: "The horde approaches!" 
-    },
-    // ... more waves
+let state = createState(42)
+while (!isRunOver(state)) {
+  state = tick(state, 16.67, { gateChoice: null, autopilot: true })
 }
+console.log('depth:', state.depth, 'affixes:', state.player.affixes.map(a => a.id))
 ```
 
-## 🎨 Customization Tips
+## Key systems
 
-### Adding New Enemy Types
-1. Add enemy config in `CONFIG.enemies.types`
-2. Include in wave configurations
-3. Set unique colors and stats
+### Affix pool
+20 affixes across offense/defense/utility categories. Each has tags, weight,
+and a stat delta. Tags drive pity tracking and autopilot scoring.
+See `docs/sim/affixes.md` for the full schema and tag taxonomy.
 
-### Creating New Upgrades
-1. Add upgrade object to `CONFIG.upgrades`
-2. Define name, description, stat display
-3. Implement `apply` function
+### Damage pipeline
+PoE-standard: `(base + flat) * (1 + sum_increased/100) * product(1 + more_i/100) * crit?`
+Increased bonuses add together (diminishing). More bonuses multiply (always valuable).
 
-### Modifying Waves
-1. Edit `CONFIG.waves` object
-2. Set duration, enemy types, spawn rate
-3. Add custom wave message
+### Pity
+Per-tag drought counter. Boost = `1 + (drought/5)^2`.
+At 5 missed gates: 2x weight. At 10: 5x. Resets when tag is picked.
 
-## 📊 Performance Optimization
+### Autopilot
+`score = value * tagSynergy * categoryDepthBonus`. Early game biases offense,
+late game biases defense. Designed to be naive — manual play should outperform it.
 
-- Uses Babylon.js engine optimizations
-- Object pooling for projectiles (future enhancement)
-- Automatic quality reduction on mobile
-- FPS counter for monitoring
+## Future work
 
-## 🔄 Next Steps
+- **Separation**: port enemy/projectile/pickup logic from legacy layer to sim
+- **Tests**: `npm test` runs `node --test sim/**/*.test.js` — pure functions, no browser
+- **MD agent states**: `docs/AGENTS.md` scopes context per task (load only what's relevant)
+- **New zones**: duplicate `waveForDepth`, add zone field to SimState
+- **Meta layer**: currency, atlas, crafting built on sim/affixes.js
 
-### Immediate Improvements
-- [ ] Sound effects and music
-- [ ] Particle effects for impacts
-- [ ] More weapon types
-- [ ] Boss enemies at wave ends
+## License
 
-### Future Features
-- [ ] Character selection
-- [ ] Persistent upgrades
-- [ ] Leaderboard system
-- [ ] Multiple maps/environments
-- [ ] Co-op multiplayer
-
-## 🐛 Known Issues
-
-- Range indicator may not update immediately after upgrade
-- Performance may drop with 50+ enemies on screen
-- Mobile touch controls not yet implemented
-
-## 📝 Claude Code Integration
-
-This project structure is perfect for Claude Code if you want to:
-- Add version control
-- Implement more complex features
-- Collaborate with others
-- Deploy to a web server
-
-To use with Claude Code:
-1. Create a new project
-2. Copy these files into the project
-3. Use Claude Code's built-in server
-4. Iterate with AI assistance
-
-## 🎮 Game Tips
-
-- **Early Game**: Focus on damage and attack speed upgrades
-- **Mid Game**: Balance survivability with offense
-- **Late Game**: Life steal and regeneration become crucial
-- **Wave 5+**: Prioritize crowd control (piercing shots)
-- **Boss Preparation**: Save health pickups when possible
-
-## 📜 License
-
-MIT License - Feel free to modify and distribute
-
-## 🙏 Credits
-
-- Babylon.js for 3D engine
-- Inspired by Vampire Survivors
-- Enhanced by Claude AI
-
----
-
-**Happy Surviving!** 🎯🗡️🛡️
+MIT
