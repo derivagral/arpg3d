@@ -30,6 +30,7 @@ class PickupManager {
         pickup.type = type;
         pickup.value = value || CONFIG.pickups[type].value;
         pickup.floatOffset = Math.random() * Math.PI * 2;
+        pickup.spawnTime = Date.now();
 
         this.pickups.push(pickup);
         return pickup;
@@ -45,13 +46,22 @@ class PickupManager {
             ) * CONFIG.pickups.floatHeight;
             pickup.rotation.y += CONFIG.pickups.rotationSpeed;
 
+            const despawnMs = CONFIG.pickups[pickup.type].despawnMs;
+            if (despawnMs && Date.now() - pickup.spawnTime > despawnMs) {
+                pickup.dispose();
+                return false;
+            }
+
             const distToPlayer = BABYLON.Vector3.Distance(
                 pickup.position,
                 playerMesh.position
             );
 
             // Magnetic attraction (skip for items if inventory is full)
-            const shouldAttract = pickup.type !== 'item' || !inventoryFull;
+            const autoDestroyEnabled = pickup.type === 'item'
+                && this.game.inventoryManager
+                && this.game.inventoryManager.isAutoDestroyEnabled(pickup.value && pickup.value.rarity);
+            const shouldAttract = pickup.type !== 'item' || !inventoryFull || autoDestroyEnabled;
             if (shouldAttract && distToPlayer < playerStats.magnetRadius) {
                 const direction = playerMesh.position.subtract(pickup.position);
                 direction.y = 0;
@@ -78,13 +88,14 @@ class PickupManager {
                     pickup.dispose();
                     return false;
                 } else if (pickup.type === 'item') {
-                    // Only collect if inventory has space
-                    if (!inventoryFull && onItemCollected) {
-                        onItemCollected(pickup.value);
-                        pickup.dispose();
-                        return false;
+                    if (onItemCollected) {
+                        const collected = onItemCollected(pickup.value);
+                        if (collected !== false) {
+                            pickup.dispose();
+                            return false;
+                        }
                     }
-                    // Keep item on ground if inventory is full
+                    // Keep item on ground when inventory is full and auto-destroy is disabled
                 }
             }
 

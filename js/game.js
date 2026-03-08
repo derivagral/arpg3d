@@ -240,9 +240,19 @@ class Game {
             },
             // onItemCollected callback
             (item) => {
-                if (this.inventoryManager.addItem(item)) {
+                const result = this.inventoryManager.addItem(item);
+
+                if (result === true) {
                     this.ui.updateInventoryDisplay();
+                    return true;
                 }
+
+                if (result === 'destroyed') {
+                    this.ui.updateInventoryDisplay();
+                    return true;
+                }
+
+                return false;
             },
             // onGoldCollected callback
             (value) => {
