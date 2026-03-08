@@ -122,7 +122,7 @@ class ProjectileManager {
             const dist = BABYLON.Vector3.Distance(projectile.position, playerMesh.position);
 
             if (dist < 0.8) {
-                if (onPlayerHit) onPlayerHit(projectile.damage);
+                if (onPlayerHit) onPlayerHit(projectile.damage, projectile.sourceName || 'Projectile');
                 projectile.dispose();
                 return false;
             }

@@ -506,6 +506,58 @@ body {
     flex-direction: column;
 }
 
+/* Inventory header with salvage bar */
+.inventory-header {
+    border-bottom: 2px solid rgba(255, 215, 0, 0.3);
+    padding-bottom: 10px;
+    margin-bottom: 15px;
+}
+
+.inventory-header h2 {
+    color: #ffd700;
+    text-align: center;
+    margin-bottom: 8px;
+    font-size: 24px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+}
+
+.salvage-bar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+}
+
+.salvage-label {
+    color: #888;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-right: 4px;
+}
+
+.salvage-btn {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 4px;
+    color: #ccc;
+    font-size: 11px;
+    padding: 3px 10px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.salvage-btn:hover {
+    background: rgba(255, 60, 60, 0.3);
+    border-color: #ff4444;
+    color: white;
+}
+
+.salvage-common { color: #cccccc; }
+.salvage-uncommon { color: #33ff33; }
+.salvage-rare { color: #6699ff; }
+
 .inventory-items h2 {
     color: #ffd700;
     text-align: center;
@@ -628,6 +680,77 @@ body {
     font-size: 14px;
     margin-top: 20px;
     opacity: 0.8;
+}
+
+/* Item Tooltip */
+.item-tooltip {
+    position: fixed;
+    display: none;
+    background: linear-gradient(135deg, rgba(10, 10, 25, 0.97), rgba(20, 15, 35, 0.97));
+    border: 2px solid #4a90e2;
+    border-radius: 8px;
+    padding: 12px 16px;
+    color: white;
+    font-size: 13px;
+    z-index: 200;
+    pointer-events: none;
+    max-width: 460px;
+    min-width: 180px;
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.8);
+    backdrop-filter: blur(6px);
+}
+
+.item-tooltip .tooltip-name {
+    font-size: 16px;
+    font-weight: bold;
+    margin-bottom: 4px;
+}
+
+.item-tooltip .tooltip-slot {
+    font-size: 11px;
+    color: #888;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    padding-bottom: 6px;
+}
+
+.item-tooltip .tooltip-affix {
+    padding: 3px 0;
+    color: #aaccff;
+    font-size: 13px;
+}
+
+.item-tooltip .tooltip-affix::before {
+    content: '+ ';
+    color: #66ff66;
+}
+
+.item-tooltip .tooltip-section-label {
+    font-size: 10px;
+    color: #888;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 4px;
+}
+
+/* Comparison tooltip — side-by-side columns */
+.tooltip-compare {
+    display: flex;
+    gap: 0;
+    align-items: stretch;
+}
+
+.tooltip-compare-col {
+    flex: 1;
+    min-width: 140px;
+}
+
+.tooltip-compare-divider {
+    width: 1px;
+    background: rgba(255, 255, 255, 0.15);
+    margin: 0 12px;
 }
 
 /* Performance mode (reduce effects) */

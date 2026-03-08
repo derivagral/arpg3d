@@ -39,6 +39,22 @@ class UIManager {
             invRegen: document.getElementById('inv-regen')
         };
 
+        this.tooltip = document.getElementById('itemTooltip');
+
+        // Salvage buttons
+        document.querySelectorAll('.salvage-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const rarity = btn.dataset.rarity;
+                if (this.game.inventoryManager) {
+                    const count = this.game.inventoryManager.removeItemsByRarity(rarity);
+                    if (count > 0) {
+                        this.hideTooltip();
+                        this.updateInventoryDisplay();
+                    }
+                }
+            });
+        });
+
         // Initialize inventory and equipment slots
         this.initializeInventorySlots();
         this.initializeEquipmentSlots();
@@ -53,16 +69,42 @@ class UIManager {
             slot.innerHTML = '<div class="inventory-slot-icon">□</div>';
             slot.dataset.slotIndex = i;
 
-            // Add click handler for equipping items
+            // Click to equip
             slot.addEventListener('click', () => {
                 if (this.game.inventoryManager) {
                     const item = this.game.inventoryManager.getItem(i);
                     if (item) {
+                        this.hideTooltip();
                         this.game.inventoryManager.equipItem(i);
                         this.updateInventoryDisplay();
                     }
                 }
             });
+
+            // Right-click to discard
+            slot.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                if (this.game.inventoryManager) {
+                    const item = this.game.inventoryManager.getItem(i);
+                    if (item) {
+                        this.game.inventoryManager.removeItem(i);
+                        this.hideTooltip();
+                        this.updateInventoryDisplay();
+                    }
+                }
+            });
+
+            // Tooltip hover — with comparison to equipped item
+            slot.addEventListener('mouseenter', (e) => {
+                const inv = this.game.inventoryManager;
+                const item = inv && inv.getItem(i);
+                if (item) {
+                    const equipped = inv.equipment[item.slotType] || null;
+                    this.showTooltip(item, e, equipped);
+                }
+            });
+            slot.addEventListener('mousemove', (e) => this.positionTooltip(e));
+            slot.addEventListener('mouseleave', () => this.hideTooltip());
 
             this.elements.inventoryGrid.appendChild(slot);
         }
@@ -80,13 +122,22 @@ class UIManager {
             `;
             slot.dataset.slotType = slotType;
 
-            // Add click handler for unequipping items
+            // Click to unequip
             slot.addEventListener('click', () => {
                 if (this.game.inventoryManager) {
+                    this.hideTooltip();
                     this.game.inventoryManager.unequipItem(slotType);
                     this.updateInventoryDisplay();
                 }
             });
+
+            // Tooltip hover
+            slot.addEventListener('mouseenter', (e) => {
+                const item = this.game.inventoryManager && this.game.inventoryManager.equipment[slotType];
+                if (item) this.showTooltip(item, e);
+            });
+            slot.addEventListener('mousemove', (e) => this.positionTooltip(e));
+            slot.addEventListener('mouseleave', () => this.hideTooltip());
 
             this.elements.equipmentGrid.appendChild(slot);
         });
@@ -132,6 +183,12 @@ class UIManager {
                 icon.textContent = '□';
                 icon.style.color = '';
             }
+        }
+
+        // Recompute equipment bonuses and apply to player
+        if (this.game.inventoryManager && this.game.player) {
+            const bonuses = this.game.inventoryManager.calculateEquipmentBonuses();
+            this.game.player.applyEquipmentBonuses(bonuses);
         }
 
         // Update stats display to reflect equipment bonuses
@@ -268,6 +325,12 @@ class UIManager {
         // Apply the upgrade
         upgrade.apply(this.game);
 
+        // Recompute equipment bonuses after upgrade modifies baseStats
+        if (this.game.inventoryManager && this.game.player) {
+            const bonuses = this.game.inventoryManager.calculateEquipmentBonuses();
+            this.game.player.applyEquipmentBonuses(bonuses);
+        }
+
         // Decrease pending upgrades
         this.game.state.upgradesPending--;
 
@@ -322,6 +385,66 @@ class UIManager {
         // This would require integration with Babylon.js for 3D text
         // For now, we'll skip this feature
         // Could be implemented with dynamic texture or GUI
+    }
+
+    // ── Tooltip system ─────────────────────────────────────────────────
+
+    showTooltip(item, mouseEvent, compareItem = null) {
+        if (!this.tooltip) return;
+        const rarityColors = {
+            common: '#cccccc', uncommon: '#33ff33', rare: '#6699ff',
+            epic: '#cc44ff', legendary: '#ff9922'
+        };
+
+        const buildItemHtml = (it, label) => {
+            const c = rarityColors[it.rarity] || '#cccccc';
+            let h = '';
+            if (label) h += `<div class="tooltip-section-label">${label}</div>`;
+            h += `<div class="tooltip-name" style="color:${c}">${it.name}</div>`;
+            h += `<div class="tooltip-slot">${it.slotType}</div>`;
+            if (it.affixes && it.affixes.length > 0) {
+                for (const affix of it.affixes) {
+                    h += `<div class="tooltip-affix">${affix.desc}</div>`;
+                }
+            } else {
+                h += `<div class="tooltip-affix" style="color:#666">No affixes</div>`;
+            }
+            return h;
+        };
+
+        const color = rarityColors[item.rarity] || '#cccccc';
+        let html;
+
+        if (compareItem) {
+            html = '<div class="tooltip-compare">';
+            html += '<div class="tooltip-compare-col">' + buildItemHtml(item, 'Inventory') + '</div>';
+            html += '<div class="tooltip-compare-divider"></div>';
+            html += '<div class="tooltip-compare-col">' + buildItemHtml(compareItem, 'Equipped') + '</div>';
+            html += '</div>';
+        } else {
+            html = buildItemHtml(item);
+        }
+
+        this.tooltip.innerHTML = html;
+        this.tooltip.style.borderColor = color;
+        this.tooltip.style.display = 'block';
+        this.positionTooltip(mouseEvent);
+    }
+
+    positionTooltip(e) {
+        if (!this.tooltip || this.tooltip.style.display !== 'block') return;
+        const margin = 12;
+        let x = e.clientX + margin;
+        let y = e.clientY + margin;
+        const rect = this.tooltip.getBoundingClientRect();
+        if (x + rect.width > window.innerWidth) x = e.clientX - rect.width - margin;
+        if (y + rect.height > window.innerHeight) y = e.clientY - rect.height - margin;
+        this.tooltip.style.left = x + 'px';
+        this.tooltip.style.top = y + 'px';
+    }
+
+    hideTooltip() {
+        if (this.tooltip) this.tooltip.style.display = 'none';
     }
 
     updateDebugInfo(fps) {

@@ -132,6 +132,11 @@ class Game {
             );
 
             if (distToPlayer < 1) {
+                this.player.lastDamageSource = {
+                    name: enemy.name || enemy.type || 'Enemy',
+                    damage: enemy.damage,
+                    type: 'contact'
+                };
                 this.player.takeDamage(enemy.damage);
                 this.ui.updateHealthBar();
                 this.pickupManager.createPickup(enemy.mesh.position, 'xp', enemy.xpValue);
@@ -198,7 +203,12 @@ class Game {
         // Update enemy projectiles
         this.projectileManager.updateEnemyProjectiles(
             this.player.mesh,
-            (damage) => {
+            (damage, sourceName) => {
+                this.player.lastDamageSource = {
+                    name: sourceName || 'Projectile',
+                    damage: damage,
+                    type: 'projectile'
+                };
                 this.player.takeDamage(damage);
                 this.ui.updateHealthBar();
             }
@@ -284,7 +294,11 @@ class Game {
     checkGameOver() {
         if (this.player.stats.health <= 0) {
             const survivalTime = this.formatTime(Date.now() - this.state.startTime);
-            alert(`Game Over!\nSurvived: ${survivalTime}\nWave: ${this.spawnManager.currentWave}\nLevel: ${this.player.level}`);
+            const src = this.player.lastDamageSource;
+            const killedBy = src
+                ? `Killed by: ${src.name} (${src.damage} dmg, ${src.type})`
+                : 'Killed by: Unknown';
+            alert(`Game Over!\nSurvived: ${survivalTime}\nWave: ${this.spawnManager.currentWave}\nLevel: ${this.player.level}\n${killedBy}`);
             location.reload();
         }
     }

@@ -119,14 +119,25 @@
 
             <!-- Right side: Inventory -->
             <div class="inventory-items">
-                <h2>Inventory</h2>
+                <div class="inventory-header">
+                    <h2>Inventory</h2>
+                    <div class="salvage-bar" id="salvageBar">
+                        <span class="salvage-label">Salvage:</span>
+                        <button class="salvage-btn salvage-common" data-rarity="common">Common</button>
+                        <button class="salvage-btn salvage-uncommon" data-rarity="uncommon">Uncommon</button>
+                        <button class="salvage-btn salvage-rare" data-rarity="rare">Rare</button>
+                    </div>
+                </div>
                 <div class="inventory-grid" id="inventoryGrid">
                     <!-- Inventory slots will be generated here -->
                 </div>
             </div>
         </div>
-        <div class="inventory-hint">Press 'I' to close</div>
+        <div class="inventory-hint">Press 'I' to close | Right-click to discard</div>
     </div>
+
+    <!-- Item Tooltip (reused for all hover) -->
+    <div id="itemTooltip" class="item-tooltip"></div>
 
     <!-- Babylon.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/babylonjs/7.0.0/babylon.js"></script>
