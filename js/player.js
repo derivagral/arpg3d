@@ -27,6 +27,10 @@ class Player {
             lastRegen: 0
         };
 
+        // Base stats are the "pre-equipment" values — modified by level-ups and upgrades.
+        // Effective stats in this.stats are recomputed via applyEquipmentBonuses().
+        this.baseStats = { ...this.stats };
+
         this.level = 1;
         this.rangeUpdated = false;
 
@@ -189,18 +193,56 @@ class Player {
         this.stats.xpToNext = Math.floor(
             this.stats.xpToNext * CONFIG.progression.xpMultiplier
         );
+        this.baseStats.xpToNext = this.stats.xpToNext;
 
-        // Base stat improvements
-        this.stats.damage += CONFIG.player.levelUpDamageBonus;
-        this.stats.attackSpeed = Math.max(
+        // Base stat improvements (modify baseStats, then recompute effective)
+        this.baseStats.damage += CONFIG.player.levelUpDamageBonus;
+        this.baseStats.attackSpeed = Math.max(
             CONFIG.player.minAttackSpeed,
-            this.stats.attackSpeed - CONFIG.player.attackSpeedReduction
+            this.baseStats.attackSpeed - CONFIG.player.attackSpeedReduction
         );
-        this.stats.maxHealth += CONFIG.player.levelUpHealthBonus;
+        this.baseStats.maxHealth += CONFIG.player.levelUpHealthBonus;
+
+        // Copy base changes to stats (equipment recomputation will override these)
+        this.stats.damage = this.baseStats.damage;
+        this.stats.attackSpeed = this.baseStats.attackSpeed;
+        this.stats.maxHealth = this.baseStats.maxHealth;
         this.stats.health = Math.min(
             this.stats.health + CONFIG.player.levelUpHeal,
             this.stats.maxHealth
         );
+    }
+
+    // Recompute effective stats from baseStats + equipment bonuses
+    applyEquipmentBonuses(bonuses) {
+        const base = this.baseStats;
+
+        // Damage pipeline: (baseDamage + flat) * (1 + increased/100) * product(1 + more/100)
+        let dmg = base.damage + bonuses.flatDamage;
+        dmg *= (1 + bonuses.increased / 100);
+        for (const m of bonuses.more) dmg *= (1 + m / 100);
+        this.stats.damage = Math.round(dmg);
+
+        // Multiplicative stats
+        this.stats.speed = base.speed * bonuses.speedMult;
+        this.stats.attackSpeed = Math.round(base.attackSpeed * bonuses.attackSpeedMult);
+
+        // Additive stats
+        this.stats.maxHealth = base.maxHealth + bonuses.maxHp;
+        this.stats.regen = base.regen + bonuses.regen;
+        this.stats.lifeSteal = base.lifeSteal + bonuses.lifeSteal;
+        this.stats.attackRange = base.attackRange + bonuses.attackRange;
+        this.stats.magnetRadius = base.magnetRadius + bonuses.magnetRadius;
+        this.stats.critChance = Math.min(1, base.critChance + bonuses.critChance);
+        this.stats.piercing = base.piercing + (bonuses.piercing || 0);
+
+        // Clamp health to new max
+        if (this.stats.health > this.stats.maxHealth) {
+            this.stats.health = this.stats.maxHealth;
+        }
+
+        // Flag range visual update if range changed
+        this.rangeUpdated = true;
     }
 
     getPosition() {

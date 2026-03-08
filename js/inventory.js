@@ -104,29 +104,37 @@ class InventoryManager {
         return this.equipment;
     }
 
-    // Calculate total stats from equipped items
-    calculateEquipmentStats() {
-        const stats = {
-            health: 0,
-            damage: 0,
-            speed: 0,
-            attackSpeed: 0,
-            critChance: 0,
-            lifeSteal: 0,
-            regen: 0
+    // Calculate aggregate equipment bonuses from all equipped item affixes
+    calculateEquipmentBonuses() {
+        const bonuses = {
+            flatDamage: 0, increased: 0, more: [],
+            critChance: 0, critMult: 0,
+            maxHp: 0, regen: 0, lifeSteal: 0,
+            attackRange: 0, magnetRadius: 0,
+            xpMult: 0, speedMult: 1, attackSpeedMult: 1
         };
 
         for (const item of Object.values(this.equipment)) {
-            if (item && item.stats) {
-                for (const [stat, value] of Object.entries(item.stats)) {
-                    if (stats.hasOwnProperty(stat)) {
-                        stats[stat] += value;
-                    }
-                }
+            if (!item || !item.affixes) continue;
+            for (const affix of item.affixes) {
+                const d = affix.delta;
+                if (d.flatDamage)      bonuses.flatDamage      += d.flatDamage;
+                if (d.increased)       bonuses.increased       += d.increased;
+                if (d.more)            bonuses.more.push(d.more);
+                if (d.critChance)      bonuses.critChance      += d.critChance;
+                if (d.critMult)        bonuses.critMult        += d.critMult;
+                if (d.maxHp)           bonuses.maxHp           += d.maxHp;
+                if (d.regen)           bonuses.regen           += d.regen;
+                if (d.lifeSteal)       bonuses.lifeSteal       += d.lifeSteal;
+                if (d.attackRange)     bonuses.attackRange     += d.attackRange;
+                if (d.magnetRadius)    bonuses.magnetRadius    += d.magnetRadius;
+                if (d.xpMult)          bonuses.xpMult          += d.xpMult;
+                if (d.speedMult)       bonuses.speedMult       *= d.speedMult;
+                if (d.attackSpeedMult) bonuses.attackSpeedMult *= d.attackSpeedMult;
             }
         }
 
-        return stats;
+        return bonuses;
     }
 
     // Get count of items in inventory
