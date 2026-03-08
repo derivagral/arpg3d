@@ -58,12 +58,12 @@ class Player {
         indicatorMat.emissiveColor = new BABYLON.Color3(0.5, 0.5, 0);
         indicator.material = indicatorMat;
 
-        // Attack range indicator
+        this.mesh = player;
+
+        // Attack range indicator — must be after this.mesh is set so parent works
         if (CONFIG.player.showRangeIndicator) {
             this.createRangeIndicator();
         }
-
-        this.mesh = player;
     }
 
     createRangeIndicator() {
