@@ -41,6 +41,20 @@ class UIManager {
 
         this.tooltip = document.getElementById('itemTooltip');
 
+        // Salvage buttons
+        document.querySelectorAll('.salvage-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const rarity = btn.dataset.rarity;
+                if (this.game.inventoryManager) {
+                    const count = this.game.inventoryManager.removeItemsByRarity(rarity);
+                    if (count > 0) {
+                        this.hideTooltip();
+                        this.updateInventoryDisplay();
+                    }
+                }
+            });
+        });
+
         // Initialize inventory and equipment slots
         this.initializeInventorySlots();
         this.initializeEquipmentSlots();
@@ -80,10 +94,14 @@ class UIManager {
                 }
             });
 
-            // Tooltip hover
+            // Tooltip hover — with comparison to equipped item
             slot.addEventListener('mouseenter', (e) => {
-                const item = this.game.inventoryManager && this.game.inventoryManager.getItem(i);
-                if (item) this.showTooltip(item, e);
+                const inv = this.game.inventoryManager;
+                const item = inv && inv.getItem(i);
+                if (item) {
+                    const equipped = inv.equipment[item.slotType] || null;
+                    this.showTooltip(item, e, equipped);
+                }
             });
             slot.addEventListener('mousemove', (e) => this.positionTooltip(e));
             slot.addEventListener('mouseleave', () => this.hideTooltip());
@@ -371,23 +389,40 @@ class UIManager {
 
     // ── Tooltip system ─────────────────────────────────────────────────
 
-    showTooltip(item, mouseEvent) {
+    showTooltip(item, mouseEvent, compareItem = null) {
         if (!this.tooltip) return;
         const rarityColors = {
             common: '#cccccc', uncommon: '#33ff33', rare: '#6699ff',
             epic: '#cc44ff', legendary: '#ff9922'
         };
-        const color = rarityColors[item.rarity] || '#cccccc';
 
-        let html = `<div class="tooltip-name" style="color:${color}">${item.name}</div>`;
-        html += `<div class="tooltip-slot">${item.slotType}</div>`;
-
-        if (item.affixes && item.affixes.length > 0) {
-            for (const affix of item.affixes) {
-                html += `<div class="tooltip-affix">${affix.desc}</div>`;
+        const buildItemHtml = (it, label) => {
+            const c = rarityColors[it.rarity] || '#cccccc';
+            let h = '';
+            if (label) h += `<div class="tooltip-section-label">${label}</div>`;
+            h += `<div class="tooltip-name" style="color:${c}">${it.name}</div>`;
+            h += `<div class="tooltip-slot">${it.slotType}</div>`;
+            if (it.affixes && it.affixes.length > 0) {
+                for (const affix of it.affixes) {
+                    h += `<div class="tooltip-affix">${affix.desc}</div>`;
+                }
+            } else {
+                h += `<div class="tooltip-affix" style="color:#666">No affixes</div>`;
             }
+            return h;
+        };
+
+        const color = rarityColors[item.rarity] || '#cccccc';
+        let html;
+
+        if (compareItem) {
+            html = '<div class="tooltip-compare">';
+            html += '<div class="tooltip-compare-col">' + buildItemHtml(item, 'Inventory') + '</div>';
+            html += '<div class="tooltip-compare-divider"></div>';
+            html += '<div class="tooltip-compare-col">' + buildItemHtml(compareItem, 'Equipped') + '</div>';
+            html += '</div>';
         } else {
-            html += `<div class="tooltip-affix" style="color:#666">No affixes</div>`;
+            html = buildItemHtml(item);
         }
 
         this.tooltip.innerHTML = html;

@@ -33,6 +33,7 @@ class Player {
 
         this.level = 1;
         this.rangeUpdated = false;
+        this.lastDamageSource = null; // { name, damage, type } — what last hit us
 
         this.createMesh();
         this.setupInput();

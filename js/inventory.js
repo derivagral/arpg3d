@@ -137,6 +137,18 @@ class InventoryManager {
         return bonuses;
     }
 
+    // Remove all inventory items of a given rarity. Returns count removed.
+    removeItemsByRarity(rarity) {
+        let count = 0;
+        for (let i = 0; i < this.maxSlots; i++) {
+            if (this.items[i] && this.items[i].rarity === rarity) {
+                this.items[i] = null;
+                count++;
+            }
+        }
+        return count;
+    }
+
     // Get count of items in inventory
     getItemCount() {
         return this.items.filter(item => item !== null).length;

@@ -337,6 +337,7 @@ class RangedEnemy extends Enemy {
 
         projectile.velocity = direction.scale(this.projectileSpeed);
         projectile.damage = this.damage;
+        projectile.sourceName = this.name || 'Ranged';
         projectile.lifetime = 120;
         projectile.isEnemyProjectile = true;
 
@@ -494,6 +495,7 @@ class BossEnemy extends Enemy {
                 
                 projectile.velocity = direction.scale(0.2);
                 projectile.damage = this.damage * 0.5;
+                projectile.sourceName = 'Boss';
                 projectile.lifetime = 150;
                 projectile.isEnemyProjectile = true;
 
