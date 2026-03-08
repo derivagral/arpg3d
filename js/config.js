@@ -220,6 +220,14 @@ const CONFIG = {
             }
         },
         {
+            name: "Multishot",
+            description: "Fire one extra projectile per attack",
+            stat: "+1 Projectile",
+            apply: (game) => {
+                game.player.baseStats.projectileCount = (game.player.baseStats.projectileCount || 1) + 1;
+            }
+        },
+        {
             name: "Regeneration",
             description: "Slowly regenerate health",
             stat: "+1 HP/sec",
@@ -294,6 +302,16 @@ const CONFIG = {
         }
     },
     
+
+    enemyProjectiles: {
+        ranged: {
+            size: 0.35
+        },
+        boss: {
+            size: 0.45
+        }
+    },
+
     pickups: {
         xp: {
             size: 0.4,

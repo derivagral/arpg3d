@@ -319,7 +319,7 @@ class RangedEnemy extends Enemy {
     shootAtPlayer(game) {
         const projectile = BABYLON.MeshBuilder.CreateSphere(
             'enemyProjectile',
-            {diameter: 0.2},
+            {diameter: CONFIG.enemyProjectiles.ranged.size},
             this.scene
         );
 
@@ -481,7 +481,7 @@ class BossEnemy extends Enemy {
                 
                 const projectile = BABYLON.MeshBuilder.CreateSphere(
                     'bossProjectile',
-                    {diameter: 0.3},
+                    {diameter: CONFIG.enemyProjectiles.boss.size},
                     this.scene
                 );
                 
