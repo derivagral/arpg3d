@@ -220,6 +220,14 @@ const CONFIG = {
             }
         },
         {
+            name: "Multishot",
+            description: "Fire one extra projectile per attack",
+            stat: "+1 Projectile",
+            apply: (game) => {
+                game.player.baseStats.projectileCount = (game.player.baseStats.projectileCount || 1) + 1;
+            }
+        },
+        {
             name: "Regeneration",
             description: "Slowly regenerate health",
             stat: "+1 HP/sec",
@@ -294,30 +302,44 @@ const CONFIG = {
         }
     },
     
+
+    enemyProjectiles: {
+        ranged: {
+            size: 0.35
+        },
+        boss: {
+            size: 0.45
+        }
+    },
+
     pickups: {
         xp: {
             size: 0.4,
             value: 1,
             color: new BABYLON.Color3(0.2, 1, 0.2),
-            emissive: new BABYLON.Color3(0.1, 0.5, 0.1)
+            emissive: new BABYLON.Color3(0.1, 0.5, 0.1),
+            despawnMs: 25000
         },
         health: {
             size: 0.4,
             value: 20,
             color: new BABYLON.Color3(1, 0.2, 0.2),
             emissive: new BABYLON.Color3(0.5, 0.1, 0.1),
-            dropChance: 0.1
+            dropChance: 0.1,
+            despawnMs: 15000
         },
         item: {
             size: 0.5,
             color: new BABYLON.Color3(0.8, 0.6, 1),
-            emissive: new BABYLON.Color3(0.4, 0.3, 0.5)
+            emissive: new BABYLON.Color3(0.4, 0.3, 0.5),
+            despawnMs: null
         },
         gold: {
             size: 0.4,
             value: 1,
             color: new BABYLON.Color3(1, 0.84, 0),  // Golden color
-            emissive: new BABYLON.Color3(0.5, 0.42, 0)
+            emissive: new BABYLON.Color3(0.5, 0.42, 0),
+            despawnMs: 25000
         },
         floatSpeed: 500, // ms for float cycle
         floatHeight: 0.1,

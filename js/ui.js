@@ -41,19 +41,17 @@ class UIManager {
 
         this.tooltip = document.getElementById('itemTooltip');
 
-        // Salvage buttons
+        // Auto-destroy rarity toggles
         document.querySelectorAll('.salvage-btn').forEach(btn => {
             btn.addEventListener('click', () => {
                 const rarity = btn.dataset.rarity;
                 if (this.game.inventoryManager) {
-                    const count = this.game.inventoryManager.removeItemsByRarity(rarity);
-                    if (count > 0) {
-                        this.hideTooltip();
-                        this.updateInventoryDisplay();
-                    }
+                    const enabled = this.game.inventoryManager.toggleAutoDestroyRarity(rarity);
+                    btn.classList.toggle('active', enabled);
                 }
             });
         });
+        this.refreshAutoDestroyButtons();
 
         // Initialize inventory and equipment slots
         this.initializeInventorySlots();
@@ -144,6 +142,7 @@ class UIManager {
     }
 
     updateInventoryDisplay() {
+        this.refreshAutoDestroyButtons();
         // Update inventory slots
         const inventorySlots = this.elements.inventoryGrid.children;
         for (let i = 0; i < inventorySlots.length; i++) {
@@ -193,6 +192,16 @@ class UIManager {
 
         // Update stats display to reflect equipment bonuses
         this.updateInventoryStats();
+    }
+
+    refreshAutoDestroyButtons() {
+        if (!this.game.inventoryManager) return;
+
+        document.querySelectorAll('.salvage-btn').forEach(btn => {
+            const rarity = btn.dataset.rarity;
+            const enabled = this.game.inventoryManager.isAutoDestroyEnabled(rarity);
+            btn.classList.toggle('active', enabled);
+        });
     }
 
     rgbToHex(color3) {

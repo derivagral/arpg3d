@@ -240,9 +240,19 @@ class Game {
             },
             // onItemCollected callback
             (item) => {
-                if (this.inventoryManager.addItem(item)) {
+                const result = this.inventoryManager.addItem(item);
+
+                if (result === true) {
                     this.ui.updateInventoryDisplay();
+                    return true;
                 }
+
+                if (result === 'destroyed') {
+                    this.ui.updateInventoryDisplay();
+                    return true;
+                }
+
+                return false;
             },
             // onGoldCollected callback
             (value) => {
@@ -281,11 +291,28 @@ class Game {
         if (currentTime - this.player.stats.lastAttack > this.player.stats.attackSpeed) {
             const target = this.findNearestEnemy();
             if (target) {
-                this.projectileManager.createProjectile(
-                    this.player.mesh.position,
-                    target.mesh.position,
-                    this.player.stats
-                );
+                const from = this.player.mesh.position;
+                const baseDirection = target.mesh.position.subtract(from).normalize();
+                const projectileCount = Math.max(1, this.player.stats.projectileCount || 1);
+                const totalSpread = 0.35;
+
+                for (let i = 0; i < projectileCount; i++) {
+                    const offset = projectileCount === 1
+                        ? 0
+                        : (i - (projectileCount - 1) / 2) * (totalSpread / (projectileCount - 1));
+                    const cos = Math.cos(offset);
+                    const sin = Math.sin(offset);
+
+                    const spreadDirection = new BABYLON.Vector3(
+                        baseDirection.x * cos - baseDirection.z * sin,
+                        baseDirection.y,
+                        baseDirection.x * sin + baseDirection.z * cos
+                    );
+
+                    const targetPos = from.add(spreadDirection.scale(this.player.stats.attackRange));
+                    this.projectileManager.createProjectile(from, targetPos, this.player.stats);
+                }
+
                 this.player.stats.lastAttack = currentTime;
             }
         }

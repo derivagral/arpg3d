@@ -23,6 +23,7 @@ class Player {
             lifeSteal: 0,
             critChance: 0,
             piercing: 0,
+            projectileCount: 1,
             regen: 0,
             lastRegen: 0
         };
@@ -236,6 +237,7 @@ class Player {
         this.stats.magnetRadius = base.magnetRadius + bonuses.magnetRadius;
         this.stats.critChance = Math.min(1, base.critChance + bonuses.critChance);
         this.stats.piercing = base.piercing + (bonuses.piercing || 0);
+        this.stats.projectileCount = Math.max(1, Math.floor(base.projectileCount + (bonuses.projectileCount || 0)));
 
         // Clamp health to new max
         if (this.stats.health > this.stats.maxHealth) {

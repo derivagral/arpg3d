@@ -17,6 +17,14 @@ class InventoryManager {
             ring2: null,
             amulet: null
         };
+
+        this.autoDestroyRarities = {
+            common: false,
+            uncommon: false,
+            rare: false,
+            epic: false,
+            legendary: false
+        };
     }
 
     // Check if inventory has space
@@ -31,6 +39,10 @@ class InventoryManager {
 
     // Add an item to the inventory
     addItem(item) {
+        if (item && this.isAutoDestroyEnabled(item.rarity)) {
+            return 'destroyed';
+        }
+
         if (!this.hasSpace()) {
             return false; // Inventory full
         }
@@ -135,6 +147,30 @@ class InventoryManager {
         }
 
         return bonuses;
+    }
+
+
+    isAutoDestroyEnabled(rarity) {
+        if (!rarity) return false;
+        return !!this.autoDestroyRarities[rarity];
+    }
+
+    toggleAutoDestroyRarity(rarity) {
+        if (!Object.prototype.hasOwnProperty.call(this.autoDestroyRarities, rarity)) {
+            return false;
+        }
+
+        this.autoDestroyRarities[rarity] = !this.autoDestroyRarities[rarity];
+        return this.autoDestroyRarities[rarity];
+    }
+
+    setAutoDestroyRarity(rarity, enabled) {
+        if (!Object.prototype.hasOwnProperty.call(this.autoDestroyRarities, rarity)) {
+            return false;
+        }
+
+        this.autoDestroyRarities[rarity] = !!enabled;
+        return this.autoDestroyRarities[rarity];
     }
 
     // Remove all inventory items of a given rarity. Returns count removed.
