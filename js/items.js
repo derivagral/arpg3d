@@ -1,31 +1,59 @@
 // Item affix pool — mirrors sim/affixes.js AFFIX_POOL data for the legacy layer.
 // The sim/ version uses ES modules + seeded RNG + pity; this copy uses Math.random()
 // for random loot drops which don't need deterministic replay or pity tracking.
+//
+// Each affix has:
+//   minIlvl:    minimum item level required (0 = always available)
+//   slotPool:   null = general (all slots), or string[] of slot names
+//   sourcePool: null = general drops, or string[] of source identifiers (boss ids, etc.)
+//   delta:      base stat changes (reduced to ~42% of full power; wave scaling restores them)
+
 const ITEM_AFFIX_POOL = [
-    // OFFENSE
-    { id: 'flat_dmg_1',      name: 'Serrated Edge',  desc: '+5 flat damage',                 category: 'offense',  weight: 10, delta: { flatDamage: 5 } },
-    { id: 'flat_dmg_2',      name: 'Whetted Blade',  desc: '+12 flat damage',                category: 'offense',  weight: 6,  delta: { flatDamage: 12 } },
-    { id: 'inc_dmg_1',       name: 'Bloodlust',      desc: '20% increased damage',           category: 'offense',  weight: 8,  delta: { increased: 20 } },
-    { id: 'inc_dmg_2',       name: 'Fury',           desc: '40% increased damage',           category: 'offense',  weight: 5,  delta: { increased: 40 } },
-    { id: 'more_dmg_1',      name: 'Execute',        desc: '15% more damage',                category: 'offense',  weight: 5,  delta: { more: 15 } },
-    { id: 'attack_speed_1',  name: 'Swift Strikes',  desc: '15% faster attack speed',        category: 'offense',  weight: 8,  delta: { attackSpeedMult: 0.85 } },
-    { id: 'attack_speed_2',  name: 'Frenzy',         desc: '25% faster attack speed',        category: 'offense',  weight: 4,  delta: { attackSpeedMult: 0.75 } },
-    { id: 'crit_chance_1',   name: 'Eagle Eye',      desc: '+8% critical strike chance',     category: 'offense',  weight: 7,  delta: { critChance: 0.08 } },
-    { id: 'crit_chance_2',   name: 'Deadeye',        desc: '+18% critical strike chance',    category: 'offense',  weight: 4,  delta: { critChance: 0.18 } },
-    { id: 'crit_mult_1',     name: 'Mortal Blow',    desc: '+50% critical strike multiplier',category: 'offense',  weight: 5,  delta: { critMult: 0.5 } },
-    // DEFENSE
-    { id: 'max_hp_1',        name: 'Fortification',  desc: '+30 max health',                 category: 'defense',  weight: 10, delta: { maxHp: 30 } },
-    { id: 'max_hp_2',        name: 'Iron Will',      desc: '+70 max health',                 category: 'defense',  weight: 5,  delta: { maxHp: 70 } },
-    { id: 'regen_1',         name: 'Second Wind',    desc: '+2 HP regen per second',         category: 'defense',  weight: 7,  delta: { regen: 2 } },
-    { id: 'regen_2',         name: 'Unbreakable',    desc: '+6 HP regen per second',         category: 'defense',  weight: 4,  delta: { regen: 6 } },
-    { id: 'life_steal_1',    name: 'Vampiric',       desc: '+3 life on kill',                category: 'defense',  weight: 6,  delta: { lifeSteal: 3 } },
-    // UTILITY
-    { id: 'speed_1',         name: 'Fleet Foot',     desc: '+15% movement speed',            category: 'utility',  weight: 8,  delta: { speedMult: 1.15 } },
-    { id: 'speed_2',         name: 'Windrunner',     desc: '+30% movement speed',            category: 'utility',  weight: 4,  delta: { speedMult: 1.30 } },
-    { id: 'range_1',         name: 'Far Reach',      desc: '+3 attack range',                category: 'utility',  weight: 7,  delta: { attackRange: 3 } },
-    { id: 'magnet_1',        name: 'Magnetism',      desc: '+4 pickup magnet radius',        category: 'utility',  weight: 6,  delta: { magnetRadius: 4 } },
-    { id: 'xp_1',            name: 'Studious',       desc: '+20% XP gain',                   category: 'utility',  weight: 6,  delta: { xpMult: 0.20 } }
+    // ── OFFENSE ─────────────────────────────────────────────────────────────
+    { id: 'flat_dmg_1',      name: 'Serrated Edge',  desc: '+2 flat damage',                  category: 'offense',  weight: 10, delta: { flatDamage: 2 },            minIlvl: 0, slotPool: null, sourcePool: null },
+    { id: 'flat_dmg_2',      name: 'Whetted Blade',  desc: '+5 flat damage',                  category: 'offense',  weight: 6,  delta: { flatDamage: 5 },            minIlvl: 5, slotPool: null, sourcePool: null },
+    { id: 'inc_dmg_1',       name: 'Bloodlust',      desc: '8% increased damage',             category: 'offense',  weight: 8,  delta: { increased: 8 },             minIlvl: 0, slotPool: null, sourcePool: null },
+    { id: 'inc_dmg_2',       name: 'Fury',           desc: '17% increased damage',            category: 'offense',  weight: 5,  delta: { increased: 17 },            minIlvl: 5, slotPool: null, sourcePool: null },
+    { id: 'more_dmg_1',      name: 'Execute',        desc: '6% more damage',                  category: 'offense',  weight: 5,  delta: { more: 6 },                  minIlvl: 0, slotPool: null, sourcePool: null },
+    { id: 'attack_speed_1',  name: 'Swift Strikes',  desc: '6% faster attack speed',          category: 'offense',  weight: 8,  delta: { attackSpeedMult: 0.937 },   minIlvl: 0, slotPool: null, sourcePool: null },
+    { id: 'attack_speed_2',  name: 'Frenzy',         desc: '10% faster attack speed',         category: 'offense',  weight: 4,  delta: { attackSpeedMult: 0.895 },   minIlvl: 5, slotPool: null, sourcePool: null },
+    { id: 'crit_chance_1',   name: 'Eagle Eye',      desc: '+3% critical strike chance',      category: 'offense',  weight: 7,  delta: { critChance: 0.03 },         minIlvl: 0, slotPool: null, sourcePool: null },
+    { id: 'crit_chance_2',   name: 'Deadeye',        desc: '+8% critical strike chance',      category: 'offense',  weight: 4,  delta: { critChance: 0.08 },         minIlvl: 5, slotPool: null, sourcePool: null },
+    { id: 'crit_mult_1',     name: 'Mortal Blow',    desc: '+20% critical strike multiplier', category: 'offense',  weight: 5,  delta: { critMult: 0.2 },            minIlvl: 0, slotPool: null, sourcePool: null },
+    // ── DEFENSE ─────────────────────────────────────────────────────────────
+    { id: 'max_hp_1',        name: 'Fortification',  desc: '+12 max health',                  category: 'defense',  weight: 10, delta: { maxHp: 12 },                minIlvl: 0, slotPool: null, sourcePool: null },
+    { id: 'max_hp_2',        name: 'Iron Will',      desc: '+29 max health',                  category: 'defense',  weight: 5,  delta: { maxHp: 29 },                minIlvl: 5, slotPool: null, sourcePool: null },
+    { id: 'regen_1',         name: 'Second Wind',    desc: '+1 HP regen per second',          category: 'defense',  weight: 7,  delta: { regen: 1 },                 minIlvl: 0, slotPool: null, sourcePool: null },
+    { id: 'regen_2',         name: 'Unbreakable',    desc: '+2.5 HP regen per second',        category: 'defense',  weight: 4,  delta: { regen: 2.5 },               minIlvl: 5, slotPool: null, sourcePool: null },
+    { id: 'life_steal_1',    name: 'Vampiric',       desc: '+1 life on kill',                 category: 'defense',  weight: 6,  delta: { lifeSteal: 1 },             minIlvl: 0, slotPool: null, sourcePool: null },
+    // ── UTILITY ─────────────────────────────────────────────────────────────
+    { id: 'speed_1',         name: 'Fleet Foot',     desc: '+6% movement speed',              category: 'utility',  weight: 8,  delta: { speedMult: 1.063 },         minIlvl: 0, slotPool: null, sourcePool: null },
+    { id: 'speed_2',         name: 'Windrunner',     desc: '+13% movement speed',             category: 'utility',  weight: 4,  delta: { speedMult: 1.126 },         minIlvl: 5, slotPool: null, sourcePool: null },
+    { id: 'range_1',         name: 'Far Reach',      desc: '+1 attack range',                 category: 'utility',  weight: 7,  delta: { attackRange: 1 },           minIlvl: 0, slotPool: null, sourcePool: null },
+    { id: 'magnet_1',        name: 'Magnetism',      desc: '+2 pickup magnet radius',         category: 'utility',  weight: 6,  delta: { magnetRadius: 2 },          minIlvl: 0, slotPool: null, sourcePool: null },
+    { id: 'xp_1',            name: 'Studious',       desc: '+8% XP gain',                     category: 'utility',  weight: 6,  delta: { xpMult: 0.08 },             minIlvl: 0, slotPool: null, sourcePool: null },
+
+    // ── SLOT-SPECIFIC (future) ──────────────────────────────────────────────
+    // Add entries with slotPool: ['feet'] etc. Examples:
+    // { id: 'boot_speed_1', name: 'Strider', desc: '+4% movement speed',
+    //   category: 'utility', weight: 8, delta: { speedMult: 1.04 },
+    //   minIlvl: 0, slotPool: ['feet'], sourcePool: null },
+    // { id: 'weapon_flat_1', name: 'Keen Edge', desc: '+3 flat damage',
+    //   category: 'offense', weight: 8, delta: { flatDamage: 3 },
+    //   minIlvl: 0, slotPool: ['weapon'], sourcePool: null },
+
+    // ── SOURCE-SPECIFIC (future) ────────────────────────────────────────────
+    // Add entries with sourcePool: ['boss_skeleton_king'] etc. Examples:
+    // { id: 'boss_execute', name: 'Regicide', desc: '10% more damage',
+    //   category: 'offense', weight: 5, delta: { more: 10 },
+    //   minIlvl: 0, slotPool: null, sourcePool: ['boss_skeleton_king'] },
 ];
+
+// Identity values for multiplicative stats — used by wave scaling
+const MULT_IDENTITY = {
+    speedMult: 1.0,
+    attackSpeedMult: 1.0
+};
 
 // Affix count ranges by rarity
 const AFFIX_COUNTS = {
@@ -36,6 +64,45 @@ const AFFIX_COUNTS = {
     legendary: { min: 4, max: 4 }
 };
 
+// Scale an affix's delta values based on wave number.
+// Additive stats scale linearly; multiplicative stats scale the magnitude from identity.
+function scaleAffixDelta(baseDelta, wave) {
+    const multiplier = 1 + (wave - 1) * CONFIG.items.scaling.scaleFactor;
+    const scaled = {};
+    for (const [key, value] of Object.entries(baseDelta)) {
+        if (key in MULT_IDENTITY) {
+            const identity = MULT_IDENTITY[key];
+            const magnitude = value - identity;
+            scaled[key] = identity + magnitude * multiplier;
+        } else {
+            scaled[key] = Math.round(value * multiplier * 100) / 100;
+        }
+    }
+    return scaled;
+}
+
+// Generate a human-readable description from a (possibly scaled) delta object.
+function formatAffixDesc(delta) {
+    const formatters = {
+        flatDamage:      v => `+${Math.round(v)} flat damage`,
+        increased:       v => `${Math.round(v)}% increased damage`,
+        more:            v => `${Math.round(v)}% more damage`,
+        critChance:      v => `+${Math.round(v * 100)}% critical strike chance`,
+        critMult:        v => `+${Math.round(v * 100)}% critical strike multiplier`,
+        maxHp:           v => `+${Math.round(v)} max health`,
+        regen:           v => `+${+(v.toFixed(1))} HP regen per second`,
+        lifeSteal:       v => `+${Math.round(v)} life on kill`,
+        speedMult:       v => `+${Math.round((v - 1) * 100)}% movement speed`,
+        attackSpeedMult: v => `${Math.round((1 - v) * 100)}% faster attack speed`,
+        attackRange:     v => `+${Math.round(v)} attack range`,
+        magnetRadius:    v => `+${Math.round(v)} pickup magnet radius`,
+        xpMult:          v => `+${Math.round(v * 100)}% XP gain`,
+    };
+    return Object.entries(delta)
+        .map(([k, v]) => (formatters[k] ? formatters[k](v) : `${k}: ${v}`))
+        .join(', ');
+}
+
 // Item class for managing equipment and inventory items
 class Item {
     constructor(config) {
@@ -45,6 +112,7 @@ class Item {
         this.slotType = config.slotType || 'weapon'; // Which equipment slot it goes in
         this.icon = config.icon || CONFIG.items.genericIcon;
         this.affixes = config.affixes || [];
+        this.ilvl = config.ilvl || 1;
 
         // Stats will be derived from affixes at equip time
         this.stats = config.stats || {};
@@ -71,7 +139,8 @@ class Item {
             slotType: this.slotType,
             icon: this.icon,
             stats: { ...this.stats },
-            affixes: this.affixes.map(a => ({ ...a, delta: { ...a.delta } }))
+            affixes: this.affixes.map(a => ({ ...a, delta: { ...a.delta } })),
+            ilvl: this.ilvl
         });
     }
 }
@@ -93,17 +162,29 @@ class ItemGenerator {
         return 'common'; // Fallback
     }
 
-    // Roll affixes for an item based on rarity
-    static rollAffixes(rarity) {
+    // Resolve the available affix pool for a given slot, item level, and drop source.
+    // Filters by ilvl requirement, slot affinity, and source affinity.
+    static resolveAffixPool(slotType, ilvl, sourceId = null) {
+        return ITEM_AFFIX_POOL.filter(a => {
+            if ((a.minIlvl || 0) > ilvl) return false;
+            if (a.slotPool !== null && !a.slotPool.includes(slotType)) return false;
+            if (a.sourcePool !== null && (!sourceId || !a.sourcePool.includes(sourceId))) return false;
+            return true;
+        });
+    }
+
+    // Roll affixes for an item based on rarity, slot, ilvl, wave, and optional source.
+    static rollAffixes(rarity, slotType, ilvl, wave, sourceId = null) {
         const counts = AFFIX_COUNTS[rarity] || AFFIX_COUNTS.common;
         const count = counts.min + Math.floor(Math.random() * (counts.max - counts.min + 1));
 
+        const pool = this.resolveAffixPool(slotType, ilvl, sourceId);
         const picked = [];
         const usedIds = new Set();
 
         for (let i = 0; i < count; i++) {
             // Filter out already-picked affixes
-            const available = ITEM_AFFIX_POOL.filter(a => !usedIds.has(a.id));
+            const available = pool.filter(a => !usedIds.has(a.id));
             if (available.length === 0) break;
 
             // Weighted random pick
@@ -118,7 +199,15 @@ class ItemGenerator {
                 }
             }
 
-            picked.push(chosen);
+            // Scale the delta by wave and generate dynamic description
+            const scaledDelta = scaleAffixDelta(chosen.delta, wave);
+            const scaledAffix = {
+                ...chosen,
+                delta: scaledDelta,
+                desc: formatAffixDesc(scaledDelta)
+            };
+
+            picked.push(scaledAffix);
             usedIds.add(chosen.id);
         }
 
@@ -126,11 +215,15 @@ class ItemGenerator {
     }
 
     // Generate a random item
-    static generateItem() {
+    static generateItem(opts = {}) {
+        const wave = opts.wave || 1;
+        const sourceId = opts.sourceId || null;
+        const ilvl = wave; // 1:1 mapping for now; can add a formula later
+
         const rarity = this.rollRarity();
         const slotTypes = CONFIG.items.slotTypes;
         const slotType = slotTypes[Math.floor(Math.random() * slotTypes.length)];
-        const affixes = this.rollAffixes(rarity);
+        const affixes = this.rollAffixes(rarity, slotType, ilvl, wave, sourceId);
 
         return new Item({
             name: this.generateName(slotType, rarity),
@@ -138,7 +231,8 @@ class ItemGenerator {
             slotType: slotType,
             icon: CONFIG.items.genericIcon,
             affixes: affixes,
-            stats: {}
+            stats: {},
+            ilvl: ilvl
         });
     }
 

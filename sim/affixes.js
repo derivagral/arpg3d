@@ -7,19 +7,27 @@
  * gates can filter on them.
  *
  * Affix schema:
- *   id:       unique string key
- *   name:     display name
- *   desc:     one-liner shown in gate UI
- *   tags:     string[] — determines pity tracking, gate filtering, autopilot scoring
- *   category: 'offense' | 'defense' | 'utility'
- *   weight:   base selection weight (before pity boost)
- *   value:    numeric magnitude for autopilot scoring (higher = autopilot prefers it)
- *   delta:    stat changes applied to player when this affix is held
- *             keys match deriveStats() consumption in this module
+ *   id:         unique string key
+ *   name:       display name
+ *   desc:       one-liner shown in gate UI
+ *   tags:       string[] — determines pity tracking, gate filtering, autopilot scoring
+ *   category:   'offense' | 'defense' | 'utility'
+ *   weight:     base selection weight (before pity boost)
+ *   value:      numeric magnitude for autopilot scoring (higher = autopilot prefers it)
+ *   delta:      base stat changes (reduced to ~42% of full power; wave scaling restores them)
+ *   minIlvl:    minimum item level required (0 = always available)
+ *   slotPool:   null = general (all slots), or string[] of slot names for slot-specific affixes
+ *   sourcePool: null = general drops, or string[] of source identifiers (boss ids, etc.)
  */
 
 import { weightedPick } from './rng.js'
 import { getPityBoost } from './pity.js'
+
+/** Identity values for multiplicative stats — used by wave scaling */
+export const MULT_IDENTITY = { speedMult: 1.0, attackSpeedMult: 1.0 }
+
+/** Default wave scaling factor (matches CONFIG.items.scaling.scaleFactor in legacy layer) */
+export const DEFAULT_SCALE_FACTOR = 0.197
 
 /** @type {Array<Affix>} */
 export const AFFIX_POOL = [
@@ -27,211 +35,277 @@ export const AFFIX_POOL = [
   {
     id: 'flat_dmg_1',
     name: 'Serrated Edge',
-    desc: '+5 flat damage',
+    desc: '+2 flat damage',
     tags: ['damage', 'flat', 'melee'],
     category: 'offense',
     weight: 10,
     value: 5,
-    delta: { flatDamage: 5 }
+    delta: { flatDamage: 2 },
+    minIlvl: 0, slotPool: null, sourcePool: null
   },
   {
     id: 'flat_dmg_2',
     name: 'Whetted Blade',
-    desc: '+12 flat damage',
+    desc: '+5 flat damage',
     tags: ['damage', 'flat', 'melee'],
     category: 'offense',
     weight: 6,
     value: 12,
-    delta: { flatDamage: 12 }
+    delta: { flatDamage: 5 },
+    minIlvl: 5, slotPool: null, sourcePool: null
   },
   {
     id: 'inc_dmg_1',
     name: 'Bloodlust',
-    desc: '20% increased damage',
+    desc: '8% increased damage',
     tags: ['damage', 'increased', 'melee'],
     category: 'offense',
     weight: 8,
     value: 8,
-    delta: { increased: 20 }
+    delta: { increased: 8 },
+    minIlvl: 0, slotPool: null, sourcePool: null
   },
   {
     id: 'inc_dmg_2',
     name: 'Fury',
-    desc: '40% increased damage',
+    desc: '17% increased damage',
     tags: ['damage', 'increased', 'melee'],
     category: 'offense',
     weight: 5,
     value: 14,
-    delta: { increased: 40 }
+    delta: { increased: 17 },
+    minIlvl: 5, slotPool: null, sourcePool: null
   },
   {
     id: 'more_dmg_1',
     name: 'Execute',
-    desc: '15% more damage',
+    desc: '6% more damage',
     tags: ['damage', 'more', 'melee'],
     category: 'offense',
     weight: 5,
     value: 12,
-    delta: { more: 15 }
+    delta: { more: 6 },
+    minIlvl: 0, slotPool: null, sourcePool: null
   },
   {
     id: 'attack_speed_1',
     name: 'Swift Strikes',
-    desc: '15% faster attack speed',
+    desc: '6% faster attack speed',
     tags: ['attackSpeed', 'utility', 'melee'],
     category: 'offense',
     weight: 8,
     value: 7,
-    delta: { attackSpeedMult: 0.85 }  // multiplied against base ms (lower = faster)
+    delta: { attackSpeedMult: 0.937 },  // multiplied against base ms (lower = faster)
+    minIlvl: 0, slotPool: null, sourcePool: null
   },
   {
     id: 'attack_speed_2',
     name: 'Frenzy',
-    desc: '25% faster attack speed',
+    desc: '10% faster attack speed',
     tags: ['attackSpeed', 'utility', 'melee'],
     category: 'offense',
     weight: 4,
     value: 11,
-    delta: { attackSpeedMult: 0.75 }
+    delta: { attackSpeedMult: 0.895 },
+    minIlvl: 5, slotPool: null, sourcePool: null
   },
   {
     id: 'crit_chance_1',
     name: 'Eagle Eye',
-    desc: '+8% critical strike chance',
+    desc: '+3% critical strike chance',
     tags: ['crit', 'damage', 'precision'],
     category: 'offense',
     weight: 7,
     value: 9,
-    delta: { critChance: 0.08 }
+    delta: { critChance: 0.03 },
+    minIlvl: 0, slotPool: null, sourcePool: null
   },
   {
     id: 'crit_chance_2',
     name: 'Deadeye',
-    desc: '+18% critical strike chance',
+    desc: '+8% critical strike chance',
     tags: ['crit', 'damage', 'precision'],
     category: 'offense',
     weight: 4,
     value: 16,
-    delta: { critChance: 0.18 }
+    delta: { critChance: 0.08 },
+    minIlvl: 5, slotPool: null, sourcePool: null
   },
   {
     id: 'crit_mult_1',
     name: 'Mortal Blow',
-    desc: '+50% critical strike multiplier',
+    desc: '+20% critical strike multiplier',
     tags: ['crit', 'damage', 'precision'],
     category: 'offense',
     weight: 5,
     value: 10,
-    delta: { critMult: 0.5 }  // added to base 1.5x
+    delta: { critMult: 0.2 },  // added to base 1.5x
+    minIlvl: 0, slotPool: null, sourcePool: null
   },
 
   // ── DEFENSE ──────────────────────────────────────────────────────────────
   {
     id: 'max_hp_1',
     name: 'Fortification',
-    desc: '+30 max health',
+    desc: '+12 max health',
     tags: ['maxHp', 'defense', 'life'],
     category: 'defense',
     weight: 10,
     value: 6,
-    delta: { maxHp: 30 }
+    delta: { maxHp: 12 },
+    minIlvl: 0, slotPool: null, sourcePool: null
   },
   {
     id: 'max_hp_2',
     name: 'Iron Will',
-    desc: '+70 max health',
+    desc: '+29 max health',
     tags: ['maxHp', 'defense', 'life'],
     category: 'defense',
     weight: 5,
     value: 11,
-    delta: { maxHp: 70 }
+    delta: { maxHp: 29 },
+    minIlvl: 5, slotPool: null, sourcePool: null
   },
   {
     id: 'regen_1',
     name: 'Second Wind',
-    desc: '+2 HP regen per second',
+    desc: '+1 HP regen per second',
     tags: ['regen', 'defense', 'life'],
     category: 'defense',
     weight: 7,
     value: 7,
-    delta: { regen: 2 }
+    delta: { regen: 1 },
+    minIlvl: 0, slotPool: null, sourcePool: null
   },
   {
     id: 'regen_2',
     name: 'Unbreakable',
-    desc: '+6 HP regen per second',
+    desc: '+2.5 HP regen per second',
     tags: ['regen', 'defense', 'life'],
     category: 'defense',
     weight: 4,
     value: 13,
-    delta: { regen: 6 }
+    delta: { regen: 2.5 },
+    minIlvl: 5, slotPool: null, sourcePool: null
   },
   {
     id: 'life_steal_1',
     name: 'Vampiric',
-    desc: '+3 life on kill',
+    desc: '+1 life on kill',
     tags: ['lifeSteal', 'defense', 'life'],
     category: 'defense',
     weight: 6,
     value: 7,
-    delta: { lifeSteal: 3 }
+    delta: { lifeSteal: 1 },
+    minIlvl: 0, slotPool: null, sourcePool: null
   },
 
   // ── UTILITY ──────────────────────────────────────────────────────────────
   {
     id: 'speed_1',
     name: 'Fleet Foot',
-    desc: '+15% movement speed',
+    desc: '+6% movement speed',
     tags: ['speed', 'mobility', 'utility'],
     category: 'utility',
     weight: 8,
     value: 6,
-    delta: { speedMult: 1.15 }
+    delta: { speedMult: 1.063 },
+    minIlvl: 0, slotPool: null, sourcePool: null
   },
   {
     id: 'speed_2',
     name: 'Windrunner',
-    desc: '+30% movement speed',
+    desc: '+13% movement speed',
     tags: ['speed', 'mobility', 'utility'],
     category: 'utility',
     weight: 4,
     value: 10,
-    delta: { speedMult: 1.30 }
+    delta: { speedMult: 1.126 },
+    minIlvl: 5, slotPool: null, sourcePool: null
   },
   {
     id: 'range_1',
     name: 'Far Reach',
-    desc: '+3 attack range',
+    desc: '+1 attack range',
     tags: ['range', 'utility', 'melee'],
     category: 'utility',
     weight: 7,
     value: 6,
-    delta: { attackRange: 3 }
+    delta: { attackRange: 1 },
+    minIlvl: 0, slotPool: null, sourcePool: null
   },
   {
     id: 'magnet_1',
     name: 'Magnetism',
-    desc: '+4 pickup magnet radius',
+    desc: '+2 pickup magnet radius',
     tags: ['magnet', 'utility', 'quality'],
     category: 'utility',
     weight: 6,
     value: 4,
-    delta: { magnetRadius: 4 }
+    delta: { magnetRadius: 2 },
+    minIlvl: 0, slotPool: null, sourcePool: null
   },
   {
     id: 'xp_1',
     name: 'Studious',
-    desc: '+20% XP gain',
+    desc: '+8% XP gain',
     tags: ['xp', 'utility', 'quality'],
     category: 'utility',
     weight: 6,
     value: 5,
-    delta: { xpMult: 0.20 }
+    delta: { xpMult: 0.08 },
+    minIlvl: 0, slotPool: null, sourcePool: null
   }
+
+  // ── SLOT-SPECIFIC (future) ──────────────────────────────────────────────
+  // Add entries with slotPool: ['feet'] etc.
+
+  // ── SOURCE-SPECIFIC (future) ────────────────────────────────────────────
+  // Add entries with sourcePool: ['boss_skeleton_king'] etc.
 ]
 
 /** All unique tags that appear in the pool — used by pity for drought tracking */
 export const ALL_TAGS = [...new Set(AFFIX_POOL.flatMap(a => a.tags))]
+
+/**
+ * Scale an affix's delta values based on wave number.
+ * Additive stats scale linearly; multiplicative stats scale the magnitude from identity.
+ *
+ * @param {object} baseDelta
+ * @param {number} wave
+ * @param {number} scaleFactor
+ * @returns {object} scaled delta
+ */
+export const scaleAffixDelta = (baseDelta, wave, scaleFactor = DEFAULT_SCALE_FACTOR) => {
+  const multiplier = 1 + (wave - 1) * scaleFactor
+  const scaled = {}
+  for (const [key, value] of Object.entries(baseDelta)) {
+    if (key in MULT_IDENTITY) {
+      const identity = MULT_IDENTITY[key]
+      scaled[key] = identity + (value - identity) * multiplier
+    } else {
+      scaled[key] = Math.round(value * multiplier * 100) / 100
+    }
+  }
+  return scaled
+}
+
+/**
+ * Resolve the available affix pool for a given slot, item level, and source.
+ *
+ * @param {string|null} slotType - equipment slot, or null for unrestricted
+ * @param {number} ilvl - item level
+ * @param {string|null} sourceId - drop source identifier, or null for general
+ * @returns {Affix[]}
+ */
+export const resolvePool = (slotType = null, ilvl = 0, sourceId = null) => {
+  return AFFIX_POOL.filter(a => {
+    if ((a.minIlvl || 0) > ilvl) return false
+    if (a.slotPool !== null && (!slotType || !a.slotPool.includes(slotType))) return false
+    if (a.sourcePool !== null && (!sourceId || !a.sourcePool.includes(sourceId))) return false
+    return true
+  })
+}
 
 /**
  * Roll one affix from the pool, applying pity boost weights.
@@ -242,10 +316,19 @@ export const ALL_TAGS = [...new Set(AFFIX_POOL.flatMap(a => a.tags))]
  * @param {PityState} pity
  * @param {string[]|null} filterTags  - null = unrestricted
  * @param {string[]} excludeIds       - affix IDs to skip (already maxed, etc.)
+ * @param {object} [opts]             - optional: { wave, slotType, sourceId }
  * @returns {[Affix, number]} [affix, nextRngState]
  */
-export const rollAffix = (rngState, pity, filterTags = null, excludeIds = []) => {
-  let pool = AFFIX_POOL.filter(a => !excludeIds.includes(a.id))
+export const rollAffix = (rngState, pity, filterTags = null, excludeIds = [], opts = {}) => {
+  const { wave = 1, slotType = null, sourceId = null } = opts
+
+  // Start with pool filtered by ilvl/slot/source
+  let pool = resolvePool(slotType, wave, sourceId)
+
+  // Apply ID exclusions
+  pool = pool.filter(a => !excludeIds.includes(a.id))
+
+  // Apply tag filter
   if (filterTags && filterTags.length > 0) {
     pool = pool.filter(a => a.tags.some(t => filterTags.includes(t)))
   }
@@ -260,7 +343,15 @@ export const rollAffix = (rngState, pity, filterTags = null, excludeIds = []) =>
     )
   }))
 
-  return weightedPick(rngState, weighted)
+  const [affix, nextRng] = weightedPick(rngState, weighted)
+
+  // If wave > 1, scale the delta on the picked affix
+  if (wave > 1) {
+    const scaledAffix = { ...affix, delta: scaleAffixDelta(affix.delta, wave) }
+    return [scaledAffix, nextRng]
+  }
+
+  return [affix, nextRng]
 }
 
 /**

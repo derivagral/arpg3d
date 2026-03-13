@@ -151,7 +151,7 @@ class Game {
 
                 // Check for item drop
                 if (ItemGenerator.shouldDropItem(enemy.type)) {
-                    const item = ItemGenerator.generateItem();
+                    const item = ItemGenerator.generateItem({ wave: this.spawnManager.currentWave });
                     this.pickupManager.createPickup(enemy.mesh.position, 'item', item);
                 }
 
@@ -187,7 +187,7 @@ class Game {
 
                 // Check for item drop
                 if (ItemGenerator.shouldDropItem(enemy.type)) {
-                    const item = ItemGenerator.generateItem();
+                    const item = ItemGenerator.generateItem({ wave: this.spawnManager.currentWave });
                     this.pickupManager.createPickup(position, 'item', item);
                 }
             },
