@@ -406,7 +406,17 @@ const CONFIG = {
         genericIcon: '⬡',
 
         // Equipment slot types
-        slotTypes: ['head', 'chest', 'hands', 'legs', 'feet', 'weapon', 'offhand', 'ring1', 'ring2', 'amulet']
+        slotTypes: ['head', 'chest', 'hands', 'legs', 'feet', 'weapon', 'offhand', 'ring1', 'ring2', 'amulet'],
+
+        // Wave-based affix scaling
+        // multiplier = 1 + (wave - 1) * scaleFactor
+        // At wave 1: 1.0x (base values ~42% of old power)
+        // At wave 8: 2.38x (~100% of old power)
+        // Continues scaling indefinitely past wave 8
+        scaling: {
+            scaleFactor: 0.197,
+            baseReduction: 0.42
+        }
     },
     
     progression: {

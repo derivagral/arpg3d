@@ -10,7 +10,10 @@
   category: 'offense' | 'defense' | 'utility',
   weight:   number,       // base selection weight (before pity boost)
   value:    number,       // magnitude for autopilot scoring (bigger = autopilot prefers)
-  delta: {                // stat changes applied when this affix is held
+  minIlvl:  number,       // minimum item level to appear (0 = always; tier 2 = 5)
+  slotPool: null|string[],// null = all slots; or ['feet','weapon'] for slot-specific
+  sourcePool: null|string[],// null = general; or ['boss_skeleton_king'] for source-specific
+  delta: {                // BASE stat changes (~42% of full power; wave scaling restores them)
     flatDamage?:     number,   // added before increased multiplier
     increased?:      number,   // % increased (additive pool with others)
     more?:           number,   // % more (multiplicative — each "more" multiplies separately)
@@ -58,6 +61,20 @@
 3. `ALL_TAGS` is auto-derived from the pool — no manual update needed.
 4. Test: `rollAffix(rng, createPity())` should be able to return the new affix.
 5. Update `docs/AGENTS.md` if the affix introduces a new tag category.
+
+## Wave scaling
+Base delta values are ~42% of "full power." When items are generated, `scaleAffixDelta(delta, wave)` scales them:
+- `multiplier = 1 + (wave - 1) * 0.197`
+- Additive stats: `value * multiplier`
+- Multiplicative stats (speedMult, attackSpeedMult): `identity + (value - identity) * multiplier`
+
+At wave 1 items are weak; by wave 8 they reach original power. Scaling continues past wave 8 with no cap.
+
+## Pool resolution
+`resolvePool(slotType, ilvl, sourceId)` filters AFFIX_POOL by:
+1. `minIlvl <= ilvl`
+2. `slotPool` matches slot (or null = general)
+3. `sourcePool` matches source (or null = general)
 
 ## Pity interaction
 `rollAffix` applies pity boost to each candidate affix's weight:
