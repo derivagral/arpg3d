@@ -89,7 +89,7 @@ const CONFIG = {
         1: {
             duration: 30000,
             enemies: ['basic'],
-            spawnRate: 2000,
+            spawnRate: 2500,
             spawnCount: 1,
             spawnPattern: 'circle',
             message: "The horde approaches!"
@@ -97,7 +97,7 @@ const CONFIG = {
         2: {
             duration: 40000,
             enemies: ['basic', 'basic', 'fast'],
-            spawnRate: 1800,
+            spawnRate: 2200,
             spawnCount: 1,
             spawnPattern: 'circle',
             message: "Speed demons join the fight!"
@@ -105,7 +105,7 @@ const CONFIG = {
         3: {
             duration: 45000,
             enemies: ['basic', 'fast', 'fast'],
-            spawnRate: 1600,
+            spawnRate: 2000,
             spawnCount: 1,
             spawnPattern: 'directional',
             message: "They're getting faster!"
@@ -113,7 +113,7 @@ const CONFIG = {
         4: {
             duration: 50000,
             enemies: ['basic', 'fast', 'tank'],
-            spawnRate: 1500,
+            spawnRate: 1900,
             spawnCount: 1,
             spawnPattern: 'circle',
             message: "Heavy units incoming!"
@@ -121,32 +121,32 @@ const CONFIG = {
         5: {
             duration: 60000,
             enemies: ['basic', 'fast', 'tank', 'swarm', 'swarm'],
-            spawnRate: 1400,
-            spawnCount: 2,
+            spawnRate: 1800,
+            spawnCount: 1,
             spawnPattern: 'circle',
             message: "The swarm arrives!"
         },
         6: {
             duration: 60000,
             enemies: ['fast', 'tank', 'swarm', 'swarm'],
-            spawnRate: 1200,
-            spawnCount: 2,
+            spawnRate: 1600,
+            spawnCount: 1,
             spawnPattern: 'line',
             message: "Chaos unleashed!"
         },
         7: {
             duration: 70000,
             enemies: ['tank', 'tank', 'fast', 'swarm'],
-            spawnRate: 1000,
-            spawnCount: 2,
+            spawnRate: 1400,
+            spawnCount: 1,
             spawnPattern: 'grid',
             message: "Elite forces deployed!"
         },
         8: {
             duration: 80000,
             enemies: ['all'], // Special flag for all types
-            spawnRate: 800,
-            spawnCount: 3,
+            spawnRate: 1200,
+            spawnCount: 1,
             spawnPattern: 'circle',
             message: "MAXIMUM THREAT!"
         }
@@ -436,6 +436,27 @@ const CONFIG = {
         updateInterval: 100, // ms
         waveIndicatorDuration: 3000, // ms
         upgradeMenuPause: true // Pause game during upgrades
+    },
+
+    indicators: {
+        aoe: { fillColor: [1, 0.3, 0.1], borderColor: [1, 0, 0], alpha: 0.2, borderAlpha: 0.3 },
+        line: { color: [1, 0.2, 0.1], alpha: 0.2, width: 0.3 },
+        projectilePath: { color: [1, 0.5, 0.5], alpha: 0.1, segmentCount: 6, length: 8 },
+        enabled: true
+    },
+
+    elite: {
+        healthMultiplier: 2.5,
+        damageMultiplier: 1.8,
+        sizeMultiplier: 1.3,
+        xpMultiplier: 3,
+        baseChance: 0.05,
+        chancePerWave: 0.01,
+        maxChance: 0.25,
+        glowColor: new BABYLON.Color3(1, 0.85, 0.2),
+        ringColor: new BABYLON.Color3(1, 0.7, 0.1),
+        dropBonusMultiplier: 3,
+        abilityCooldown: 5000
     }
 };
 

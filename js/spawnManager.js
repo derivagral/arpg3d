@@ -8,14 +8,15 @@ class SpawnManager {
         this.game = game;
         this.config = config; // Pre-game configuration from CONFIG.spawn
 
-        // Runtime spawn modifiers (can be changed dynamically by upgrades, events, etc.)
+        // Runtime spawn modifiers (can be changed dynamically by upgrades, events, map mods, etc.)
         this.modifiers = {
             spawnRateMultiplier: 1.0,      // < 1.0 = slower, > 1.0 = faster spawning
             spawnCountMultiplier: 1.0,     // Multiplier for enemies per spawn
             enemyHealthMultiplier: 1.0,    // Scale enemy HP
             enemyDamageMultiplier: 1.0,    // Scale enemy damage
             spawnRadiusMultiplier: 1.0,    // Scale spawn distance from player
-            bossSpawnChanceMultiplier: 1.0 // Modify boss spawn frequency
+            bossSpawnChanceMultiplier: 1.0, // Modify boss spawn frequency
+            eliteChanceMultiplier: 1.0     // Scale elite promotion chance
         };
 
         // Difficulty scaling over time
@@ -134,7 +135,69 @@ class SpawnManager {
         enemy.health *= healthMod;
         enemy.damage = Math.round(enemy.damage * damageMod);
 
+        // Roll for elite promotion (bosses excluded)
+        if (type !== 'boss') {
+            const eliteChance = Math.min(
+                CONFIG.elite.maxChance * this.modifiers.eliteChanceMultiplier,
+                (CONFIG.elite.baseChance + this.currentWave * CONFIG.elite.chancePerWave)
+                    * this.modifiers.eliteChanceMultiplier
+            );
+            if (Math.random() < eliteChance) {
+                this.promoteToElite(enemy);
+            }
+        }
+
         return enemy;
+    }
+
+    /**
+     * Promote an enemy to elite status with enhanced stats and visuals
+     */
+    promoteToElite(enemy) {
+        enemy.isElite = true;
+        enemy.eliteDropBonus = true;
+
+        // Scale stats
+        enemy.maxHealth *= CONFIG.elite.healthMultiplier;
+        enemy.health = enemy.maxHealth;
+        enemy.damage = Math.round(enemy.damage * CONFIG.elite.damageMultiplier);
+        enemy.xpValue = Math.round(enemy.xpValue * CONFIG.elite.xpMultiplier);
+
+        // Scale size
+        const sizeScale = CONFIG.elite.sizeMultiplier;
+        if (enemy.mesh) {
+            enemy.mesh.scaling = new BABYLON.Vector3(sizeScale, sizeScale, sizeScale);
+        }
+
+        // Golden emissive tint
+        if (enemy.mesh && enemy.mesh.material) {
+            const orig = enemy.mesh.material.emissiveColor;
+            enemy.mesh.material.emissiveColor = BABYLON.Color3.Lerp(
+                orig, CONFIG.elite.glowColor, 0.4
+            );
+        }
+
+        // Orbiting ring
+        const scene = enemy.scene;
+        const ringSize = enemy.size * sizeScale * 1.5;
+        const ring = BABYLON.MeshBuilder.CreateTorus(
+            'eliteRing',
+            { diameter: ringSize, thickness: 0.06, tessellation: 24 },
+            scene
+        );
+        ring.parent = enemy.mesh;
+        ring.position.y = 0;
+        ring.rotation.x = Math.PI / 4;
+
+        const ringMat = new BABYLON.StandardMaterial('eliteRingMat', scene);
+        ringMat.diffuseColor = CONFIG.elite.ringColor;
+        ringMat.emissiveColor = CONFIG.elite.glowColor;
+        ringMat.alpha = 0.6;
+        ringMat.disableDepthWrite = true;
+        ring.material = ringMat;
+        ring.renderingGroupId = 1;
+
+        enemy.eliteRing = ring;
     }
 
     /**
