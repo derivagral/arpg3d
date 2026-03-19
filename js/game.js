@@ -17,6 +17,7 @@ class Game {
         this.pickupManager = new PickupManager(this);
         this.spawnManager = new SpawnManager(this, CONFIG.spawn);
         this.inventoryManager = new InventoryManager();
+        this.indicatorManager = new AttackIndicatorManager(this.scene);
         this.areaManager = new AreaManager(this);
 
         // Game state
@@ -95,6 +96,44 @@ class Game {
     }
 
 
+    getDropMultiplier(enemy) {
+        return enemy.isElite ? CONFIG.elite.dropBonusMultiplier : 1;
+    }
+
+    handleEnemyDeath(enemy, position) {
+        const dropMult = this.getDropMultiplier(enemy);
+
+        this.pickupManager.createPickup(position, 'xp', enemy.xpValue);
+
+        // Health drop
+        if (Math.random() < CONFIG.pickups.health.dropChance * dropMult) {
+            this.pickupManager.createPickup(position, 'health');
+        }
+
+        // Gold drop
+        const goldDropChance = (CONFIG.currency.dropChances[enemy.type] || 0.3) * dropMult;
+        if (Math.random() < goldDropChance) {
+            const goldRange = CONFIG.currency.goldAmounts[enemy.type] || { min: 1, max: 3 };
+            const goldAmount = Math.floor(Math.random() * (goldRange.max - goldRange.min + 1)) + goldRange.min;
+            this.pickupManager.createPickup(position, 'gold', goldAmount);
+        }
+
+        // Item drop
+        const itemDropChance = (CONFIG.items.dropChances[enemy.type] || 0.05) * dropMult;
+        if (Math.random() < itemDropChance) {
+            const item = ItemGenerator.generateItem({ wave: this.spawnManager.currentWave });
+            this.pickupManager.createPickup(position, 'item', item);
+        }
+
+        // Special death effects
+        if (enemy._pendingExplosion && enemy.triggerTelegraphedExplosion) {
+            enemy.triggerTelegraphedExplosion(this);
+        }
+        if (enemy._pendingSplit && enemy.getDeathEffects) {
+            enemy.getDeathEffects(this);
+        }
+    }
+
     findNearestEnemy() {
         let nearest = null;
         let minDist = Infinity;
@@ -139,22 +178,8 @@ class Game {
                 };
                 this.player.takeDamage(enemy.damage);
                 this.ui.updateHealthBar();
-                this.pickupManager.createPickup(enemy.mesh.position, 'xp', enemy.xpValue);
 
-                // Check for gold drop
-                const goldDropChance = CONFIG.currency.dropChances[enemy.type] || 0.3;
-                if (Math.random() < goldDropChance) {
-                    const goldRange = CONFIG.currency.goldAmounts[enemy.type] || { min: 1, max: 3 };
-                    const goldAmount = Math.floor(Math.random() * (goldRange.max - goldRange.min + 1)) + goldRange.min;
-                    this.pickupManager.createPickup(enemy.mesh.position, 'gold', goldAmount);
-                }
-
-                // Check for item drop
-                if (ItemGenerator.shouldDropItem(enemy.type)) {
-                    const item = ItemGenerator.generateItem({ wave: this.spawnManager.currentWave });
-                    this.pickupManager.createPickup(enemy.mesh.position, 'item', item);
-                }
-
+                this.handleEnemyDeath(enemy, enemy.mesh.position.clone());
                 enemy.destroy();
                 return false;
             }
@@ -172,24 +197,7 @@ class Game {
             this.player.mesh,
             // onEnemyKilled callback
             (enemy, position) => {
-                this.pickupManager.createPickup(position, 'xp', enemy.xpValue);
-                if (Math.random() < CONFIG.pickups.health.dropChance) {
-                    this.pickupManager.createPickup(position, 'health');
-                }
-
-                // Check for gold drop
-                const goldDropChance = CONFIG.currency.dropChances[enemy.type] || 0.3;
-                if (Math.random() < goldDropChance) {
-                    const goldRange = CONFIG.currency.goldAmounts[enemy.type] || { min: 1, max: 3 };
-                    const goldAmount = Math.floor(Math.random() * (goldRange.max - goldRange.min + 1)) + goldRange.min;
-                    this.pickupManager.createPickup(position, 'gold', goldAmount);
-                }
-
-                // Check for item drop
-                if (ItemGenerator.shouldDropItem(enemy.type)) {
-                    const item = ItemGenerator.generateItem({ wave: this.spawnManager.currentWave });
-                    this.pickupManager.createPickup(position, 'item', item);
-                }
+                this.handleEnemyDeath(enemy, position);
             },
             // onLifeSteal callback
             () => {
@@ -351,6 +359,7 @@ class Game {
             this.updateEnemies(currentTime);
             this.updateProjectiles();
             this.updatePickups();
+            this.indicatorManager.update();
             this.ui.updateStats();
             this.checkGameOver();
         });

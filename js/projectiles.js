@@ -138,6 +138,15 @@ class ProjectileManager {
 
     addEnemyProjectile(projectile) {
         this.enemyProjectiles.push(projectile);
+
+        // Add faint projectile path indicator
+        if (this.game.indicatorManager && CONFIG.indicators.enabled && projectile.velocity) {
+            const dir = projectile.velocity.normalize();
+            const pathLen = CONFIG.indicators.projectilePath.length;
+            this.game.indicatorManager.createProjectilePath(
+                projectile.position.clone(), dir, pathLen, 500
+            );
+        }
     }
 
     clear() {
