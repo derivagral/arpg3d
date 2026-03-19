@@ -89,7 +89,7 @@ Spawns enemies at predefined world positions.
 
 ## Runtime Modifiers
 
-The spawn system supports dynamic modifiers that can be changed by upgrades, events, or code:
+The spawn system supports dynamic modifiers that can be changed by upgrades, events, map mods, or code:
 
 ```javascript
 modifiers: {
@@ -98,7 +98,8 @@ modifiers: {
     enemyHealthMultiplier: 1.0,    // > 1.0 = tougher enemies
     enemyDamageMultiplier: 1.0,    // > 1.0 = stronger enemies
     spawnRadiusMultiplier: 1.0,    // > 1.0 = spawn farther away
-    bossSpawnChanceMultiplier: 1.0 // > 1.0 = more bosses
+    bossSpawnChanceMultiplier: 1.0, // > 1.0 = more bosses
+    eliteChanceMultiplier: 1.0     // > 1.0 = more elites
 }
 ```
 
@@ -304,6 +305,97 @@ game.spawnManager.scheduleSpawnEvent({
     }
 });
 ```
+
+## Elite Enemy System
+
+Any non-boss enemy can be promoted to elite on spawn. Elites have boosted stats, unique abilities, gold visuals, and better drops.
+
+### Elite Promotion
+
+Handled in `SpawnManager.createEnemy()` → `promoteToElite()`:
+- Base chance: 5% + 1% per wave, capped at 25% (configurable in `CONFIG.elite`)
+- Scaled by `eliteChanceMultiplier` modifier
+
+### Elite Stats (defaults in `CONFIG.elite`)
+
+| Property | Multiplier |
+|----------|-----------|
+| Health | 2.5x |
+| Damage | 1.8x |
+| Size | 1.3x |
+| XP | 3x |
+| Drop chance | 3x (gold, items, health) |
+
+### Elite Visuals
+
+- Golden emissive tint (lerp 40% toward gold)
+- Orbiting torus ring (parented to mesh, rotates in `update()`)
+
+### Unique Elite Abilities
+
+Each type gets one telegraphed ability on a 5s cooldown:
+
+| Type | Ability | Telegraph | Effect |
+|------|---------|-----------|--------|
+| Basic | Ground Slam | AOE circle r=2, 800ms | 1.5x damage in area |
+| Fast | Dash Strike | Direction line, 600ms | 6-unit lunge, 2x damage on contact |
+| Tank | Shockwave | AOE circle r=3.5, 1000ms | 1.2x damage in area |
+| Swarm | Split | AOE circle r=1.5, 500ms | Spawns 3 mini swarm on death (one-time) |
+| Explosive | Chain Detonation | AOE circle r=4, 1000ms | Larger explosion + 2s burning ground |
+| Ranged | Triple Shot | 3 direction lines, 500ms | 3-projectile spread |
+
+### Map Mod Integration
+
+All elite parameters flow through the existing modifier API:
+```javascript
+game.spawnManager.applyModifier('eliteChanceMultiplier', 3.0);  // 3x elite rate
+game.spawnManager.applyModifier('eliteChanceMultiplier', 0, 60000); // No elites for 60s
+// Enemy stat modifiers also apply to elites (multiplicative):
+game.spawnManager.applyModifier('enemyHealthMultiplier', 2.0);  // All enemies 2x HP
+```
+
+## Attack Indicator System
+
+Visual telegraphs for enemy attacks, managed by `AttackIndicatorManager` (`js/attackIndicators.js`).
+
+### Indicator Types
+
+**AOE Circle** — Filling disc on ground with pulsing border ring. Duration configurable per attack (500-1000ms). Fires `onComplete` callback when telegraph ends, giving the player a real dodge window.
+
+**Directional Line** — Flat box on ground showing attack direction. Fades in over 30% of duration, holds, fades out over final 20%.
+
+**Projectile Path** — Dashed line (alternating box segments) along enemy projectile trajectory. Low alpha, 500ms lifetime.
+
+### Configuration (`CONFIG.indicators`)
+
+```javascript
+indicators: {
+    aoe: { fillColor: [1, 0.3, 0.1], borderColor: [1, 0, 0], alpha: 0.2, borderAlpha: 0.3 },
+    line: { color: [1, 0.2, 0.1], alpha: 0.2, width: 0.3 },
+    projectilePath: { color: [1, 0.5, 0.5], alpha: 0.1, segmentCount: 6, length: 8 },
+    enabled: true
+}
+```
+
+### API
+
+```javascript
+// AOE with callback (attack fires after telegraph)
+game.indicatorManager.createAOEIndicator(position, radius, durationMs, colorArray, onComplete);
+
+// Directional line
+game.indicatorManager.createLineIndicator(from, to, width, durationMs, colorArray);
+
+// Projectile path (auto-created in addEnemyProjectile when enabled)
+game.indicatorManager.createProjectilePath(from, direction, length, durationMs, colorArray);
+
+// Cleanup
+game.indicatorManager.clear();
+```
+
+### Rendering
+
+All indicators use renderingGroup 1 with `disableDepthWrite` to avoid Z-fighting with the ground plane.
 
 ## Future Enhancements
 

@@ -22,6 +22,8 @@ src/          ES module entry point
 
 js/           Legacy Babylon.js render layer (browser globals)
   game.js, player.js, enemies.js, ... (existing files)
+  attackIndicators.js  AOE/line/path telegraph system
+  spawnManager.js      Wave system, elite promotion, modifier API
 
 docs/         Architecture docs for LLM and human context management
   AGENTS.md   Scope map — which docs to load per task
