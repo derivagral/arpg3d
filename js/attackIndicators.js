@@ -52,7 +52,9 @@ class AttackIndicatorManager {
             startTime: Date.now(),
             duration: durationMs,
             onComplete: onComplete || null,
-            completed: false
+            completed: false,
+            disposed: false,
+            flashUntil: 0
         };
 
         this.indicators.push(indicator);
@@ -94,7 +96,8 @@ class AttackIndicatorManager {
             lineMesh: line,
             startTime: Date.now(),
             duration: durationMs,
-            completed: false
+            completed: false,
+            disposed: false
         };
 
         this.indicators.push(indicator);
@@ -145,7 +148,8 @@ class AttackIndicatorManager {
             meshes: meshes,
             startTime: Date.now(),
             duration: durationMs || 500,
-            completed: false
+            completed: false,
+            disposed: false
         };
 
         this.indicators.push(indicator);
@@ -156,70 +160,84 @@ class AttackIndicatorManager {
         const now = Date.now();
 
         this.indicators = this.indicators.filter(ind => {
+            // Already disposed by a previous cycle — remove from array
+            if (ind.disposed) return false;
+
             const elapsed = now - ind.startTime;
             const progress = Math.min(1, elapsed / ind.duration);
 
-            if (ind.type === 'aoe') {
-                // Scale fill disc from 0 to 1
-                const s = progress;
-                ind.fillMesh.scaling = new BABYLON.Vector3(s, s, s);
+            // AOE flash phase — wait for flash to finish, then dispose
+            if (ind.completed && ind.type === 'aoe') {
+                if (now >= ind.flashUntil) {
+                    this.disposeMeshes(ind);
+                    return false;
+                }
+                return true; // Still flashing
+            }
 
-                // Pulse border alpha
-                const pulse = 0.5 + Math.sin(elapsed * 0.01) * 0.2;
-                ind.borderMesh.material.alpha = CONFIG.indicators.aoe.borderAlpha * pulse;
+            // Already completed (non-AOE types dispose immediately)
+            if (ind.completed) return false;
+
+            if (ind.type === 'aoe') {
+                if (!ind.fillMesh.isDisposed()) {
+                    const s = progress;
+                    ind.fillMesh.scaling = new BABYLON.Vector3(s, s, s);
+                }
+                if (!ind.borderMesh.isDisposed()) {
+                    const pulse = 0.5 + Math.sin(elapsed * 0.01) * 0.2;
+                    ind.borderMesh.material.alpha = CONFIG.indicators.aoe.borderAlpha * pulse;
+                }
             }
 
             if (ind.type === 'line') {
-                // Fade in over first 30%, hold, fade out over last 20%
-                let alpha = CONFIG.indicators.line.alpha;
-                if (progress < 0.3) {
-                    alpha *= progress / 0.3;
-                } else if (progress > 0.8) {
-                    alpha *= (1 - progress) / 0.2;
+                if (!ind.lineMesh.isDisposed()) {
+                    let alpha = CONFIG.indicators.line.alpha;
+                    if (progress < 0.3) {
+                        alpha *= progress / 0.3;
+                    } else if (progress > 0.8) {
+                        alpha *= (1 - progress) / 0.2;
+                    }
+                    ind.lineMesh.material.alpha = alpha;
                 }
-                ind.lineMesh.material.alpha = alpha;
             }
 
             if (ind.type === 'projectilePath') {
-                // Fade out over duration
                 const alpha = CONFIG.indicators.projectilePath.alpha * (1 - progress);
                 ind.meshes.forEach(m => {
-                    if (m.material) m.material.alpha = alpha;
+                    if (m.material && !m.isDisposed()) m.material.alpha = alpha;
                 });
             }
 
-            // Complete
-            if (progress >= 1 && !ind.completed) {
+            // Completion
+            if (progress >= 1) {
                 ind.completed = true;
 
-                // Flash effect for AOE before disposing
+                if (ind.onComplete) ind.onComplete();
+
                 if (ind.type === 'aoe') {
-                    ind.fillMesh.material.alpha = 0.5;
-                    ind.fillMesh.material.emissiveColor = new BABYLON.Color3(1, 1, 1);
-                    setTimeout(() => this.disposeIndicator(ind), 150);
-                    if (ind.onComplete) ind.onComplete();
-                    return true; // Keep until flash timeout disposes it
+                    // Flash: bright white for 150ms, then dispose next cycle
+                    if (!ind.fillMesh.isDisposed()) {
+                        ind.fillMesh.material.alpha = 0.5;
+                        ind.fillMesh.material.emissiveColor = new BABYLON.Color3(1, 1, 1);
+                    }
+                    ind.flashUntil = now + 150;
+                    return true;
                 }
 
-                if (ind.onComplete) ind.onComplete();
-                this.disposeIndicator(ind);
+                // Non-AOE: dispose immediately
+                this.disposeMeshes(ind);
                 return false;
             }
-
-            // Keep indicators that are completed but waiting for flash
-            if (ind.completed) return true;
 
             return true;
         });
     }
 
-    disposeIndicator(indicator) {
+    disposeMeshes(indicator) {
+        indicator.disposed = true;
         indicator.meshes.forEach(m => {
             if (m && !m.isDisposed()) m.dispose();
         });
-        // Remove from array
-        const idx = this.indicators.indexOf(indicator);
-        if (idx !== -1) this.indicators.splice(idx, 1);
     }
 
     clear() {
