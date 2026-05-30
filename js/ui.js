@@ -17,6 +17,7 @@ class UIManager {
             timer: document.getElementById('timer'),
             level: document.getElementById('level'),
             xp: document.getElementById('xp'),
+            objectives: document.getElementById('objectives'),
             waveIndicator: document.getElementById('waveIndicator'),
             waveNumber: document.getElementById('waveNumber'),
             waveMessage: document.getElementById('waveMessage'),
@@ -264,6 +265,33 @@ class UIManager {
         this.elements.level.textContent = `Level: ${this.game.player.level}`;
         this.elements.xp.textContent =
             `XP: ${Math.floor(this.game.player.stats.xp)} / ${this.game.player.stats.xpToNext}`;
+
+        this.updateObjectives();
+    }
+
+    updateObjectives() {
+        if (!this.elements.objectives) return;
+
+        const lines = [];
+
+        // Active objective progress + countdown
+        if (this.game.markerManager) {
+            lines.push(...this.game.markerManager.getStatus());
+        }
+
+        // Active buffs (with remaining time for timed ones)
+        const buffs = this.game.player.buffs || [];
+        const now = Date.now();
+        buffs.forEach(b => {
+            if (b.expiresAt) {
+                const secs = Math.max(0, Math.ceil((b.expiresAt - now) / 1000));
+                lines.push(`⚡ ${b.name} (${secs}s)`);
+            } else {
+                lines.push(`⚡ ${b.name}`);
+            }
+        });
+
+        this.elements.objectives.innerHTML = lines.map(l => `<div>${l}</div>`).join('');
     }
 
     showWaveIndicator(waveNumOrMessage) {

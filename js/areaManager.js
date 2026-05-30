@@ -91,6 +91,10 @@ class AreaManager {
         // Handle area-specific logic
         if (areaName === 'mobArea') {
             this.startMobAreaTimer();
+            // Spawn fresh in-map objective markers each time we enter (refresh per entry).
+            if (this.game.markerManager) {
+                this.game.markerManager.spawn('mobArea');
+            }
         } else if (areaName === 'homeBase') {
             this.stopMobAreaTimer();
         }
@@ -140,29 +144,53 @@ class AreaManager {
 
     createTileMarkers(groundSize) {
         const scene = this.game.scene;
-        const tileSize = 3;
-        const numTiles = 15;
 
-        for (let i = 0; i < numTiles; i++) {
-            const x = (Math.random() - 0.5) * groundSize * 0.8;
-            const z = (Math.random() - 0.5) * groundSize * 0.8;
+        // Track every mesh we create so cleanupArea() can dispose it — previously
+        // these tiles were untracked and leaked on every area transition.
+        this.areaTiles = [];
 
-            const tile = BABYLON.MeshBuilder.CreateBox(`tile_${i}`, {
-                width: tileSize,
-                height: 0.1,
-                depth: tileSize
+        // Quadrant-dividing cross through the origin so the four zones read clearly
+        // (and line up with the four objective markers).
+        const barLength = groundSize * 0.92;
+        const makeBar = (width, depth) => {
+            const bar = BABYLON.MeshBuilder.CreateBox('quadBar', {
+                width, height: 0.05, depth
             }, scene);
+            bar.position = new BABYLON.Vector3(0, 0.15, 0);
+            const mat = new BABYLON.StandardMaterial('quadBarMat', scene);
+            mat.diffuseColor = new BABYLON.Color3(0.22, 0.28, 0.22);
+            mat.emissiveColor = new BABYLON.Color3(0.05, 0.08, 0.05);
+            mat.specularColor = new BABYLON.Color3(0, 0, 0);
+            bar.material = mat;
+            this.areaTiles.push(bar);
+        };
+        makeBar(barLength, 0.3); // east-west divider
+        makeBar(0.3, barLength); // north-south divider
 
-            tile.position = new BABYLON.Vector3(x, 0.2, z);
+        // Sparse, deliberate decoration: a small cluster per quadrant rather than
+        // random scatter across the whole map.
+        const q = groundSize / 4;
+        const quadCenters = [[q, q], [-q, q], [q, -q], [-q, -q]];
+        quadCenters.forEach((center, qi) => {
+            for (let i = 0; i < 3; i++) {
+                const x = center[0] + (Math.random() - 0.5) * groundSize * 0.16;
+                const z = center[1] + (Math.random() - 0.5) * groundSize * 0.16;
 
-            const tileMat = new BABYLON.StandardMaterial(`tileMat_${i}`, scene);
-            tileMat.diffuseColor = new BABYLON.Color3(
-                Math.random() * 0.2 + 0.15,
-                Math.random() * 0.2 + 0.45,
-                Math.random() * 0.2 + 0.15
-            );
-            tile.material = tileMat;
-        }
+                const tile = BABYLON.MeshBuilder.CreateBox(`tile_${qi}_${i}`, {
+                    width: 2, height: 0.1, depth: 2
+                }, scene);
+                tile.position = new BABYLON.Vector3(x, 0.2, z);
+
+                const tileMat = new BABYLON.StandardMaterial(`tileMat_${qi}_${i}`, scene);
+                tileMat.diffuseColor = new BABYLON.Color3(
+                    Math.random() * 0.15 + 0.15,
+                    Math.random() * 0.15 + 0.42,
+                    Math.random() * 0.15 + 0.15
+                );
+                tile.material = tileMat;
+                this.areaTiles.push(tile);
+            }
+        });
     }
 
     spawnPortals(area) {
@@ -321,6 +349,17 @@ class AreaManager {
         // Clear original decorative tiles from scene initialization
         if (this.game.sceneManager && this.game.sceneManager.cleanupDecorativeTiles) {
             this.game.sceneManager.cleanupDecorativeTiles();
+        }
+
+        // Clear per-area tiles (quadrant dividers + decoration) created in createTileMarkers
+        if (this.areaTiles) {
+            this.areaTiles.forEach(tile => tile.dispose());
+            this.areaTiles = [];
+        }
+
+        // Tear down in-map markers (reverts any lingering buffs / spawn mods)
+        if (this.game.markerManager) {
+            this.game.markerManager.clear();
         }
 
         // Clear all enemies

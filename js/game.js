@@ -19,6 +19,7 @@ class Game {
         this.inventoryManager = new InventoryManager();
         this.indicatorManager = new AttackIndicatorManager(this.scene);
         this.areaManager = new AreaManager(this);
+        this.markerManager = new MarkerManager(this);
 
         // Game state
         this.state = {
@@ -102,6 +103,13 @@ class Game {
 
     handleEnemyDeath(enemy, position) {
         const dropMult = this.getDropMultiplier(enemy);
+        const goldFind = this.player.stats.goldFind || 1;
+        const itemFind = this.player.stats.itemFind || 1;
+
+        // Notify in-map objectives of the kill (used for "clear N in zone" goals).
+        if (this.markerManager) {
+            this.markerManager.onEnemyKilled(enemy, position);
+        }
 
         this.pickupManager.createPickup(position, 'xp', enemy.xpValue);
 
@@ -110,16 +118,17 @@ class Game {
             this.pickupManager.createPickup(position, 'health');
         }
 
-        // Gold drop
-        const goldDropChance = (CONFIG.currency.dropChances[enemy.type] || 0.3) * dropMult;
+        // Gold drop (scaled by gold-find buffs)
+        const goldDropChance = (CONFIG.currency.dropChances[enemy.type] || 0.3) * dropMult * goldFind;
         if (Math.random() < goldDropChance) {
             const goldRange = CONFIG.currency.goldAmounts[enemy.type] || { min: 1, max: 3 };
-            const goldAmount = Math.floor(Math.random() * (goldRange.max - goldRange.min + 1)) + goldRange.min;
+            const baseGold = Math.floor(Math.random() * (goldRange.max - goldRange.min + 1)) + goldRange.min;
+            const goldAmount = Math.max(1, Math.round(baseGold * goldFind));
             this.pickupManager.createPickup(position, 'gold', goldAmount);
         }
 
-        // Item drop
-        const itemDropChance = (CONFIG.items.dropChances[enemy.type] || 0.05) * dropMult;
+        // Item drop (scaled by item-find buffs)
+        const itemDropChance = (CONFIG.items.dropChances[enemy.type] || 0.05) * dropMult * itemFind;
         if (Math.random() < itemDropChance) {
             const item = ItemGenerator.generateItem({ wave: this.spawnManager.currentWave });
             this.pickupManager.createPickup(position, 'item', item);
@@ -352,6 +361,11 @@ class Game {
 
             // Update area manager (handles portals and transitions)
             this.areaManager.update(deltaTime);
+
+            // Update in-map objective markers (area checks, timers, buffs)
+            if (!this.state.paused) {
+                this.markerManager.update(deltaTime);
+            }
 
             this.updatePlayer();
             this.updateWaveSystem(currentTime);

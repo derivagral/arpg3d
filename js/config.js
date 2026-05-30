@@ -152,6 +152,95 @@ const CONFIG = {
         }
     },
 
+    // In-map objective markers, keyed by area name. One per quadrant for now.
+    // Edit this table to experiment with marker types, effects, and placement —
+    // MarkerManager reads it directly, no code changes required.
+    //
+    // Fields:
+    //   id          unique key (also the buff id namespace)
+    //   quadrant    NE | NW | SE | SW | C (placement, scaled to area size)
+    //   radius      area-check / ground-ring radius
+    //   color/glow  [r,g,b] visuals
+    //   trigger     'onEnter' | 'whileInside' | 'objective'
+    //   buff        { id, name, mods, duration? }  (mods: damageMore[], flatDamage,
+    //                 critChance, speedMult, attackSpeedMult, maxHpMult, goldFind, itemFind)
+    //   objective   { type:'kills', goal, duration, spawnMods?, reward? }
+    markers: {
+        mobArea: [
+            {
+                // Shrine: one-shot timed power buff, no downside.
+                id: 'shrine_power',
+                name: 'Shrine of Power',
+                quadrant: 'NE',
+                radius: 4,
+                color: [1, 0.3, 0.3],
+                glowColor: [1, 0.6, 0.3],
+                trigger: 'onEnter',
+                buff: {
+                    id: 'shrine_power',
+                    name: 'Empowered',
+                    duration: 20000,
+                    mods: { damageMore: [30] }
+                }
+            },
+            {
+                // Glass Cavern: linger tradeoff — big damage, fragile, only inside.
+                id: 'glass_cavern',
+                name: 'Glass Cavern',
+                quadrant: 'NW',
+                radius: 6,
+                color: [0.4, 0.6, 1],
+                glowColor: [0.6, 0.8, 1],
+                trigger: 'whileInside',
+                buff: {
+                    id: 'glass_cavern',
+                    name: 'Glass',
+                    mods: { damageMore: [50], maxHpMult: 0.6 }
+                }
+            },
+            {
+                // Culling Grounds: timed kill objective with harder spawns + payoff.
+                id: 'culling_grounds',
+                name: 'Culling Grounds',
+                quadrant: 'SE',
+                radius: 7,
+                color: [1, 0.4, 0.1],
+                glowColor: [1, 0.6, 0.2],
+                trigger: 'objective',
+                objective: {
+                    type: 'kills',
+                    goal: 20,
+                    duration: 30000,
+                    spawnMods: { spawnRateMultiplier: 2.0 },
+                    reward: {
+                        gold: 100,
+                        buff: {
+                            id: 'culling_reward',
+                            name: 'Bloodthirst',
+                            duration: 30000,
+                            mods: { damageMore: [40], speedMult: 1.2 }
+                        }
+                    }
+                }
+            },
+            {
+                // Greed Totem: linger economy tradeoff — more loot, slower movement.
+                id: 'greed_totem',
+                name: 'Greed Totem',
+                quadrant: 'SW',
+                radius: 6,
+                color: [1, 0.84, 0],
+                glowColor: [1, 0.9, 0.3],
+                trigger: 'whileInside',
+                buff: {
+                    id: 'greed_totem',
+                    name: 'Greed',
+                    mods: { goldFind: 2.0, itemFind: 2.0, speedMult: 0.7 }
+                }
+            }
+        ]
+    },
+
     upgrades: [
         {
             name: "Damage Boost",

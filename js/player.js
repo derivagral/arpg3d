@@ -25,12 +25,21 @@ class Player {
             piercing: 0,
             projectileCount: 1,
             regen: 0,
-            lastRegen: 0
+            lastRegen: 0,
+            goldFind: 1,   // drop-rate multiplier (1 = baseline)
+            itemFind: 1
         };
 
         // Base stats are the "pre-equipment" values — modified by level-ups and upgrades.
-        // Effective stats in this.stats are recomputed via applyEquipmentBonuses().
+        // Effective stats in this.stats are recomputed via recomputeStats(), which folds
+        // together baseStats + equipment bonuses + active buffs.
         this.baseStats = { ...this.stats };
+
+        // Stat modifier layers. equipmentBonuses comes from the inventory; buffs come from
+        // map markers / future sources. Both funnel through recomputeStats() so a level-up
+        // or equipment swap never silently wipes an active buff.
+        this.equipmentBonuses = Player.identityBonuses();
+        this.buffs = []; // { id, name, mods, expiresAt? }
 
         this.level = 1;
         this.rangeUpdated = false;
@@ -143,6 +152,9 @@ class Player {
             camera.position.z = this.mesh.position.z - CONFIG.world.cameraOffset;
         }
 
+        // Expire any timed buffs (recomputes stats only when something drops off)
+        this.updateBuffs();
+
         // Handle regeneration
         const currentTime = Date.now();
         if (this.stats.regen > 0 && currentTime - this.stats.lastRegen > 1000) {
@@ -205,39 +217,76 @@ class Player {
         );
         this.baseStats.maxHealth += CONFIG.player.levelUpHealthBonus;
 
-        // Copy base changes to stats (equipment recomputation will override these)
-        this.stats.damage = this.baseStats.damage;
-        this.stats.attackSpeed = this.baseStats.attackSpeed;
-        this.stats.maxHealth = this.baseStats.maxHealth;
+        // Recompute effective stats, then apply the level-up heal on top.
+        this.recomputeStats();
         this.stats.health = Math.min(
             this.stats.health + CONFIG.player.levelUpHeal,
             this.stats.maxHealth
         );
     }
 
-    // Recompute effective stats from baseStats + equipment bonuses
-    applyEquipmentBonuses(bonuses) {
-        const base = this.baseStats;
+    // Identity (no-op) equipment bonuses — used before any inventory recompute runs.
+    static identityBonuses() {
+        return {
+            flatDamage: 0, increased: 0, more: [],
+            speedMult: 1, attackSpeedMult: 1,
+            maxHp: 0, regen: 0, lifeSteal: 0, attackRange: 0,
+            magnetRadius: 0, critChance: 0, piercing: 0, projectileCount: 0
+        };
+    }
 
-        // Damage pipeline: (baseDamage + flat) * (1 + increased/100) * product(1 + more/100)
-        let dmg = base.damage + bonuses.flatDamage;
-        dmg *= (1 + bonuses.increased / 100);
-        for (const m of bonuses.more) dmg *= (1 + m / 100);
+    // Collapse all active buffs into a single modifier bundle.
+    aggregateBuffs() {
+        const agg = {
+            damageMore: [], flatDamage: 0, critChance: 0,
+            speedMult: 1, attackSpeedMult: 1, maxHpMult: 1,
+            goldFind: 1, itemFind: 1
+        };
+        for (const b of this.buffs) {
+            const m = b.mods || {};
+            if (m.damageMore) agg.damageMore.push(...m.damageMore);
+            if (m.flatDamage) agg.flatDamage += m.flatDamage;
+            if (m.critChance) agg.critChance += m.critChance;
+            if (m.speedMult != null) agg.speedMult *= m.speedMult;
+            if (m.attackSpeedMult != null) agg.attackSpeedMult *= m.attackSpeedMult;
+            if (m.maxHpMult != null) agg.maxHpMult *= m.maxHpMult;
+            if (m.goldFind != null) agg.goldFind *= m.goldFind;
+            if (m.itemFind != null) agg.itemFind *= m.itemFind;
+        }
+        return agg;
+    }
+
+    // Recompute effective stats from baseStats + equipment bonuses + active buffs.
+    recomputeStats() {
+        const base = this.baseStats;
+        const eq = this.equipmentBonuses;
+        const bf = this.aggregateBuffs();
+
+        // Damage pipeline: (base + flat) * (1 + increased/100) * product(1 + more/100)
+        // Equipment "more" multipliers and buff "more" multipliers both stack here.
+        let dmg = base.damage + eq.flatDamage + bf.flatDamage;
+        dmg *= (1 + eq.increased / 100);
+        for (const m of eq.more) dmg *= (1 + m / 100);
+        for (const m of bf.damageMore) dmg *= (1 + m / 100);
         this.stats.damage = Math.round(dmg);
 
-        // Multiplicative stats
-        this.stats.speed = base.speed * bonuses.speedMult;
-        this.stats.attackSpeed = Math.round(base.attackSpeed * bonuses.attackSpeedMult);
+        // Multiplicative stats (equipment then buff)
+        this.stats.speed = base.speed * eq.speedMult * bf.speedMult;
+        this.stats.attackSpeed = Math.round(base.attackSpeed * eq.attackSpeedMult * bf.attackSpeedMult);
+        this.stats.maxHealth = Math.round((base.maxHealth + eq.maxHp) * bf.maxHpMult);
 
         // Additive stats
-        this.stats.maxHealth = base.maxHealth + bonuses.maxHp;
-        this.stats.regen = base.regen + bonuses.regen;
-        this.stats.lifeSteal = base.lifeSteal + bonuses.lifeSteal;
-        this.stats.attackRange = base.attackRange + bonuses.attackRange;
-        this.stats.magnetRadius = base.magnetRadius + bonuses.magnetRadius;
-        this.stats.critChance = Math.min(1, base.critChance + bonuses.critChance);
-        this.stats.piercing = base.piercing + (bonuses.piercing || 0);
-        this.stats.projectileCount = Math.max(1, Math.floor(base.projectileCount + (bonuses.projectileCount || 0)));
+        this.stats.regen = base.regen + eq.regen;
+        this.stats.lifeSteal = base.lifeSteal + eq.lifeSteal;
+        this.stats.attackRange = base.attackRange + eq.attackRange;
+        this.stats.magnetRadius = base.magnetRadius + eq.magnetRadius;
+        this.stats.critChance = Math.min(1, base.critChance + eq.critChance + bf.critChance);
+        this.stats.piercing = base.piercing + (eq.piercing || 0);
+        this.stats.projectileCount = Math.max(1, Math.floor(base.projectileCount + (eq.projectileCount || 0)));
+
+        // Buff-only multipliers
+        this.stats.goldFind = bf.goldFind;
+        this.stats.itemFind = bf.itemFind;
 
         // Clamp health to new max
         if (this.stats.health > this.stats.maxHealth) {
@@ -246,6 +295,42 @@ class Player {
 
         // Flag range visual update if range changed
         this.rangeUpdated = true;
+    }
+
+    // Store the latest equipment bonuses and recompute. Called by the inventory layer.
+    applyEquipmentBonuses(bonuses) {
+        this.equipmentBonuses = bonuses;
+        this.recomputeStats();
+    }
+
+    // ── Buff layer ─────────────────────────────────────────────────────
+    // A buff is { id, name, mods, duration? }. Adding one with an existing id
+    // refreshes it. Buffs without a duration linger until removed (e.g. on
+    // leaving a marker's radius); buffs with a duration auto-expire.
+
+    addBuff(buff) {
+        this.buffs = this.buffs.filter(b => b.id !== buff.id);
+        const entry = { ...buff };
+        if (buff.duration) entry.expiresAt = Date.now() + buff.duration;
+        this.buffs.push(entry);
+        this.recomputeStats();
+    }
+
+    removeBuff(id) {
+        const before = this.buffs.length;
+        this.buffs = this.buffs.filter(b => b.id !== id);
+        if (this.buffs.length !== before) this.recomputeStats();
+    }
+
+    hasBuff(id) {
+        return this.buffs.some(b => b.id === id);
+    }
+
+    updateBuffs() {
+        const now = Date.now();
+        const before = this.buffs.length;
+        this.buffs = this.buffs.filter(b => !b.expiresAt || b.expiresAt > now);
+        if (this.buffs.length !== before) this.recomputeStats();
     }
 
     getPosition() {
