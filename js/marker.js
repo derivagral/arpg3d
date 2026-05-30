@@ -117,7 +117,10 @@ class Marker {
 
     ensureFill() {
         if (this.fillMesh) return;
-        const fill = BABYLON.MeshBuilder.CreateCylinder('markerFill_' + this.config.id, {
+        const id = this.config.id;
+
+        // Expanding/contracting disc — the actual "fill".
+        const fill = BABYLON.MeshBuilder.CreateCylinder('markerFill_' + id, {
             height: 0.04,
             diameter: this.radius * 2,
             tessellation: 48
@@ -125,7 +128,7 @@ class Marker {
         fill.position = new BABYLON.Vector3(this.position.x, 0.25, this.position.z);
         fill.isPickable = false;
 
-        const mat = new BABYLON.StandardMaterial('markerFillMat_' + this.config.id, this.scene);
+        const mat = new BABYLON.StandardMaterial('markerFillMat_' + id, this.scene);
         mat.emissiveColor = this.glowColor;
         mat.alpha = 0.3;
         mat.disableDepthWrite = true;
@@ -135,20 +138,50 @@ class Marker {
         this.fillMesh = fill;
         this.fillMat = mat;
         this.meshes.push(fill);
+
+        // Target outline — a bright ring marking the radius the fill is heading
+        // toward. Stays put while the disc grows (charge) or drains (timer), so
+        // the player can read the final extent and any safe gap inside it.
+        const outline = BABYLON.MeshBuilder.CreateTorus('markerFillOutline_' + id, {
+            diameter: this.radius * 2,
+            thickness: 0.12,
+            tessellation: 64
+        }, this.scene);
+        outline.position = new BABYLON.Vector3(this.position.x, 0.4, this.position.z);
+        outline.rotation.x = Math.PI / 2;
+        outline.isPickable = false;
+
+        const oMat = new BABYLON.StandardMaterial('markerFillOutlineMat_' + id, this.scene);
+        oMat.emissiveColor = new BABYLON.Color3(1, 1, 1);
+        oMat.alpha = 0.85;
+        oMat.disableDepthWrite = true;
+        outline.material = oMat;
+        outline.renderingGroupId = 1;
+        this.scene.glowLayer.addIncludedOnlyMesh(outline);
+
+        this.fillOutline = outline;
+        this.fillOutlineMat = oMat;
+        this.meshes.push(outline);
+
+        fill.setEnabled(false);
+        outline.setEnabled(false);
     }
 
     // progress: 0..1 (fraction of the disc that's filled). color optional.
+    // The target outline is shown for the whole effect; the disc grows/drains.
     setFill(progress, color) {
         this.ensureFill();
         const p = Math.max(0, Math.min(1, progress));
         this.fillMesh.setEnabled(p > 0);
         this.fillMesh.scaling.x = p;
         this.fillMesh.scaling.z = p;
+        this.fillOutline.setEnabled(true);
         if (color) this.fillMat.emissiveColor = color;
     }
 
     clearFill() {
         if (this.fillMesh) this.fillMesh.setEnabled(false);
+        if (this.fillOutline) this.fillOutline.setEnabled(false);
     }
 
     setState(state) {
@@ -178,6 +211,11 @@ class Marker {
         this.core.rotation.y += 0.01;
         this.core.position.y = 2 + Math.sin(this.time * 0.003) * 0.3;
         this.ring.rotation.z += 0.005;
+
+        // Pulse the target outline while a fill is active so it reads as "live".
+        if (this.fillOutline && this.fillOutline.isEnabled()) {
+            this.fillOutlineMat.alpha = 0.7 + Math.sin(this.time * 0.006) * 0.18;
+        }
     }
 
     dispose() {
