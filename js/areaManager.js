@@ -149,6 +149,31 @@ class AreaManager {
         // these tiles were untracked and leaked on every area transition.
         this.areaTiles = [];
 
+        // The quadrant cross + clustered decoration only make sense in areas that
+        // actually host objective markers. Other areas (home base) get a lighter,
+        // marker-free scatter.
+        const hasMarkers = !!(CONFIG.markers && CONFIG.markers[this.currentArea]);
+
+        if (!hasMarkers) {
+            for (let i = 0; i < 10; i++) {
+                const x = (Math.random() - 0.5) * groundSize * 0.8;
+                const z = (Math.random() - 0.5) * groundSize * 0.8;
+                const tile = BABYLON.MeshBuilder.CreateBox(`tile_${i}`, {
+                    width: 3, height: 0.1, depth: 3
+                }, scene);
+                tile.position = new BABYLON.Vector3(x, 0.2, z);
+                const tileMat = new BABYLON.StandardMaterial(`tileMat_${i}`, scene);
+                tileMat.diffuseColor = new BABYLON.Color3(
+                    Math.random() * 0.2 + 0.15,
+                    Math.random() * 0.2 + 0.45,
+                    Math.random() * 0.2 + 0.15
+                );
+                tile.material = tileMat;
+                this.areaTiles.push(tile);
+            }
+            return;
+        }
+
         // Quadrant-dividing cross through the origin so the four zones read clearly
         // (and line up with the four objective markers).
         const barLength = groundSize * 0.92;

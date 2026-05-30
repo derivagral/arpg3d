@@ -77,6 +77,78 @@ class Marker {
         this.ring = ring;
         this.ringMat = ringMat;
         this.meshes.push(ring);
+
+        // Floating name label so the player can tell markers apart at a glance.
+        this.createLabel(this.config.name || id);
+    }
+
+    createLabel(text) {
+        const id = this.config.id;
+        const plane = BABYLON.MeshBuilder.CreatePlane('markerLabel_' + id, {
+            width: 6, height: 1.5
+        }, this.scene);
+        plane.position = new BABYLON.Vector3(this.position.x, 4, this.position.z);
+        plane.billboardMode = BABYLON.Mesh.BILLBOARDMODE_ALL;
+        plane.isPickable = false;
+
+        const dt = new BABYLON.DynamicTexture('markerLabelTex_' + id, {
+            width: 512, height: 128
+        }, this.scene, true);
+        dt.hasAlpha = true;
+        dt.drawText(text, null, 88, 'bold 60px sans-serif', '#ffffff', 'transparent', true);
+
+        const mat = new BABYLON.StandardMaterial('markerLabelMat_' + id, this.scene);
+        mat.diffuseTexture = dt;
+        mat.opacityTexture = dt;
+        mat.emissiveColor = new BABYLON.Color3(1, 1, 1);
+        mat.disableLighting = true;
+        mat.backFaceCulling = false;
+        plane.material = mat;
+        plane.renderingGroupId = 1;
+
+        this.label = plane;
+        this.meshes.push(plane);
+    }
+
+    // ── Reusable fill primitive ────────────────────────────────────────
+    // A flat disc inside the ring that grows from the center (0) to the full
+    // radius (1). Used to visualise any countdown/charge — objective arming,
+    // the objective timer, and (later) telegraphed attacks or events.
+
+    ensureFill() {
+        if (this.fillMesh) return;
+        const fill = BABYLON.MeshBuilder.CreateCylinder('markerFill_' + this.config.id, {
+            height: 0.04,
+            diameter: this.radius * 2,
+            tessellation: 48
+        }, this.scene);
+        fill.position = new BABYLON.Vector3(this.position.x, 0.25, this.position.z);
+        fill.isPickable = false;
+
+        const mat = new BABYLON.StandardMaterial('markerFillMat_' + this.config.id, this.scene);
+        mat.emissiveColor = this.glowColor;
+        mat.alpha = 0.3;
+        mat.disableDepthWrite = true;
+        fill.material = mat;
+        fill.renderingGroupId = 1;
+
+        this.fillMesh = fill;
+        this.fillMat = mat;
+        this.meshes.push(fill);
+    }
+
+    // progress: 0..1 (fraction of the disc that's filled). color optional.
+    setFill(progress, color) {
+        this.ensureFill();
+        const p = Math.max(0, Math.min(1, progress));
+        this.fillMesh.setEnabled(p > 0);
+        this.fillMesh.scaling.x = p;
+        this.fillMesh.scaling.z = p;
+        if (color) this.fillMat.emissiveColor = color;
+    }
+
+    clearFill() {
+        if (this.fillMesh) this.fillMesh.setEnabled(false);
     }
 
     setState(state) {

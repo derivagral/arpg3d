@@ -81,6 +81,12 @@ class MarkerManager {
                 marker.inside = false;
                 this.handleExit(marker);
             }
+
+            // Objective markers charge up before committing — cancel if the
+            // player steps back out during the linger window.
+            if (marker.arming) {
+                this.updateArming(marker, deltaTime, inside);
+            }
         });
 
         if (this.activeObjective) {
@@ -94,17 +100,46 @@ class MarkerManager {
         if (def.trigger === 'whileInside') {
             if (def.buff) this.game.player.addBuff({ ...def.buff });
             marker.setState('active');
-            this.notify(`${def.name}: ${def.buff ? def.buff.name : 'active'}`);
+            this.notify(`${def.name}: ${def.desc || (def.buff && def.buff.name) || 'active'}`);
 
         } else if (def.trigger === 'onEnter') {
             if (marker.fired) return;
             marker.fired = true;
             if (def.buff) this.game.player.addBuff({ ...def.buff });
             marker.setState('spent');
-            this.notify(`${def.name} activated!`);
+            this.notify(`${def.name}: ${def.desc || 'activated!'}`);
 
         } else if (def.trigger === 'objective') {
-            if (marker.fired || this.activeObjective) return; // one at a time
+            if (marker.fired || marker.arming || this.activeObjective) return; // one at a time
+            const delay = def.objective.armDelay != null ? def.objective.armDelay : 0;
+            if (delay > 0) {
+                // Begin a linger/charge-up; the player can leave to back out.
+                marker.arming = { elapsed: 0, delay };
+                marker.setState('active');
+                this.notify(`${def.name}: ${def.desc || 'objective'} — stay to begin`);
+            } else {
+                this.startObjective(marker);
+            }
+        }
+    }
+
+    updateArming(marker, deltaTime, inside) {
+        const arm = marker.arming;
+
+        // Player left the radius before committing — cancel and reset.
+        if (!inside) {
+            marker.arming = null;
+            marker.clearFill();
+            marker.setState('idle');
+            return;
+        }
+
+        arm.elapsed += deltaTime;
+        marker.setFill(arm.elapsed / arm.delay, marker.glowColor);
+
+        if (arm.elapsed >= arm.delay) {
+            marker.arming = null;
+            marker.clearFill();
             this.startObjective(marker);
         }
     }
@@ -128,6 +163,7 @@ class MarkerManager {
             goal: obj.goal,
             count: 0,
             remaining: obj.duration,
+            durationTotal: obj.duration,
             reward: obj.reward || {},
             spawnMods: obj.spawnMods || {}
         };
@@ -145,6 +181,9 @@ class MarkerManager {
         const ao = this.activeObjective;
         ao.remaining -= deltaTime;
 
+        // Drain the fill disc as the clock runs down (red → empty).
+        ao.marker.setFill(ao.remaining / ao.durationTotal, new BABYLON.Color3(1, 0.5, 0.15));
+
         if (ao.count >= ao.goal) {
             this.finishObjective(true);
         } else if (ao.remaining <= 0) {
@@ -155,6 +194,7 @@ class MarkerManager {
     finishObjective(success) {
         const ao = this.activeObjective;
         this.revertObjectiveSpawnMods();
+        ao.marker.clearFill();
 
         if (success) {
             ao.marker.setState('success');
@@ -198,6 +238,15 @@ class MarkerManager {
     // Lines for the HUD: active objective progress + countdown.
     getStatus() {
         const lines = [];
+
+        // Arming charge-up (before an objective commits)
+        this.markers.forEach(marker => {
+            if (marker.arming) {
+                const pct = Math.round((marker.arming.elapsed / marker.arming.delay) * 100);
+                lines.push(`${marker.def.name}: charging ${pct}%`);
+            }
+        });
+
         if (this.activeObjective) {
             const ao = this.activeObjective;
             const secs = Math.max(0, Math.ceil(ao.remaining / 1000));

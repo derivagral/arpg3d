@@ -171,6 +171,7 @@ const CONFIG = {
                 // Shrine: one-shot timed power buff, no downside.
                 id: 'shrine_power',
                 name: 'Shrine of Power',
+                desc: '+30% Damage for 20s',
                 quadrant: 'NE',
                 radius: 4,
                 color: [1, 0.3, 0.3],
@@ -187,6 +188,7 @@ const CONFIG = {
                 // Glass Cavern: linger tradeoff — big damage, fragile, only inside.
                 id: 'glass_cavern',
                 name: 'Glass Cavern',
+                desc: '+50% Damage but -40% Max HP while inside',
                 quadrant: 'NW',
                 radius: 6,
                 color: [0.4, 0.6, 1],
@@ -202,6 +204,7 @@ const CONFIG = {
                 // Culling Grounds: timed kill objective with harder spawns + payoff.
                 id: 'culling_grounds',
                 name: 'Culling Grounds',
+                desc: 'Clear 20 enemies in 30s — 2x spawns, big reward',
                 quadrant: 'SE',
                 radius: 7,
                 color: [1, 0.4, 0.1],
@@ -211,6 +214,7 @@ const CONFIG = {
                     type: 'kills',
                     goal: 20,
                     duration: 30000,
+                    armDelay: 3000, // linger before committing; cancels if you leave
                     spawnMods: { spawnRateMultiplier: 2.0 },
                     reward: {
                         gold: 100,
@@ -227,6 +231,7 @@ const CONFIG = {
                 // Greed Totem: linger economy tradeoff — more loot, slower movement.
                 id: 'greed_totem',
                 name: 'Greed Totem',
+                desc: '2x Gold & Item find but -30% Move Speed while inside',
                 quadrant: 'SW',
                 radius: 6,
                 color: [1, 0.84, 0],
