@@ -777,3 +777,189 @@ body {
         transform: none;
     }
 }
+/* ── Main menu (pre-game save slot CRUD) ─────────────────────────────────── */
+#mainMenu {
+    position: absolute;
+    inset: 0;
+    z-index: 300;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: radial-gradient(ellipse at center, #1a1a2a 0%, #0a0a12 100%);
+    font-family: Arial, sans-serif;
+    overflow-y: auto;
+}
+
+#mainMenu .menu-panel {
+    width: min(720px, 92vw);
+    max-height: 90vh;
+    overflow-y: auto;
+    background: #1a1a1a;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 10px;
+    padding: 24px 28px;
+    color: #eee;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+}
+
+#mainMenu h1 {
+    margin: 0 0 4px;
+    color: #ffd700;
+    letter-spacing: 2px;
+    text-align: center;
+}
+
+#mainMenu h2 {
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #888;
+    margin: 0 0 10px;
+}
+
+#mainMenu .menu-status {
+    min-height: 18px;
+    text-align: center;
+    font-size: 13px;
+    color: #66ff66;
+    margin-bottom: 8px;
+}
+
+#mainMenu .menu-status.error {
+    color: #ff6666;
+}
+
+#mainMenu .menu-section {
+    margin-top: 18px;
+    padding-top: 14px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+#mainMenu .menu-row {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+#mainMenu input[type="text"] {
+    flex: 1;
+    min-width: 140px;
+    background: #2a2a2a;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 5px;
+    color: #eee;
+    padding: 8px 10px;
+    font-size: 14px;
+}
+
+#mainMenu input[type="text"]:focus {
+    outline: none;
+    border-color: #ffd700;
+}
+
+#mainMenu .menu-btn {
+    background: #2a2a2a;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 5px;
+    color: #eee;
+    padding: 8px 14px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+}
+
+#mainMenu .menu-btn:hover {
+    background: #3a3a3a;
+    border-color: rgba(255, 255, 255, 0.5);
+}
+
+#mainMenu .menu-btn.primary {
+    background: #2a4a2a;
+    border-color: #4a8a4a;
+    color: #aaffaa;
+}
+
+#mainMenu .menu-btn.primary:hover {
+    background: #3a6a3a;
+}
+
+#mainMenu .menu-btn.danger {
+    border-color: #6a3a3a;
+    color: #ff9999;
+}
+
+#mainMenu .menu-btn.danger:hover {
+    background: #4a2a2a;
+}
+
+#mainMenu .file-btn {
+    display: inline-block;
+}
+
+#mainMenu .save-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 320px;
+    overflow-y: auto;
+}
+
+#mainMenu .save-empty {
+    color: #666;
+    font-size: 13px;
+    padding: 8px 0;
+}
+
+#mainMenu .save-slot {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    background: #222;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    padding: 10px 12px;
+}
+
+#mainMenu .save-slot.incompatible {
+    opacity: 0.55;
+}
+
+#mainMenu .save-name {
+    font-weight: bold;
+    font-size: 15px;
+}
+
+#mainMenu .save-badge {
+    font-size: 11px;
+    font-weight: normal;
+    color: #ff9966;
+    border: 1px solid #ff9966;
+    border-radius: 4px;
+    padding: 1px 6px;
+    margin-left: 8px;
+}
+
+#mainMenu .save-summary {
+    font-size: 12px;
+    color: #aaa;
+    margin-top: 2px;
+}
+
+#mainMenu .save-dead {
+    color: #ff6666;
+}
+
+#mainMenu .save-updated {
+    font-size: 11px;
+    color: #666;
+    margin-top: 2px;
+}
+
+#mainMenu .save-actions {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
