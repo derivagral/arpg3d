@@ -35,10 +35,15 @@ generateGate(depth, rngState, pity, existingIds)
 resolveGate(state, choiceIdx)
   1. Validate choiceIdx
   2. Append chosen affix to player.affixes
-  3. resetDroughts(pity, chosenTags)
-  4. Transition phase → 'combat'
-  5. Append to log: { tick, type: 'gate_resolved', payload: { choiceIdx, affixId, depth } }
+  3. maxHp deltas grow the live pool: player.maxHp AND player.hp by the delta
+  4. Heal GATE_HEAL_FRACTION (30%) of maxHp — wave-clear recovery
+  5. resetDroughts(pity, chosenTags)
+  6. Transition phase → 'combat'
+  7. Append to log: { tick, type: 'gate_resolved', payload: { choiceIdx, affixId, depth } }
 ```
+The heal exists because melee enemies persist and chip: without recovery
+between waves, total hp would hard-cap run depth regardless of build.
+Partial (not full) so damage taken still carries pressure forward.
 
 ## Reroll flow (gold sink)
 ```

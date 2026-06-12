@@ -104,6 +104,21 @@ test('kills and gate rerolls survive a save round-trip', () => {
   assert.equal(hydrated.gate.rerolls, 1)
 })
 
+test('old snapshots without enemy swing fields default from templates', () => {
+  const s = createState(29)  // combat phase, enemies present
+  const snap = serializeSim(s)
+  for (const e of snap.enemies) {
+    delete e.attackMs
+    delete e.lastHitTick
+  }
+
+  const { state: hydrated } = hydrateSim(snap)
+  for (const e of hydrated.enemies) {
+    assert.ok(e.attackMs > 0, `${e.type} hydrated without attackMs`)
+    assert.equal(e.lastHitTick, 0)
+  }
+})
+
 test('old snapshots without kills/rerolls hydrate with defaults', () => {
   let s = tickUntil(createState(23), 'gate')
   const snap = serializeSim(s)

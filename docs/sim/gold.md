@@ -9,12 +9,13 @@ touching the tick loop.
 Current source: enemy kills. Current sink: gate rerolls.
 
 ## What counts as a kill
-Any enemy death the player survives — both attack kills and melee trades
-(the current melee rule consumes an enemy when it lands a contact hit).
-A credited kill grants xp, increments `player.kills[type]`, applies
-lifesteal, and rolls a gold drop. The shared path is `creditKill()` inside
-`engine.js` tick. If melee behavior later changes to persistent attackers,
-trade-credits disappear naturally and all drops migrate to attack kills.
+Player attack kills only — melee enemies persist and swing on a cooldown,
+they are never consumed on contact. A credited kill grants xp, increments
+`player.kills[type]`, applies lifesteal, and rolls a gold drop. The shared
+path is `creditKill()` inside `engine.js` tick. (Death-on-contact existed
+briefly and was removed: ehp builds auto-cleared waves and starved this
+economy. If a thorns-style reflect stat lands later, thorns deaths should
+go through `creditKill()` too.)
 
 `player.kills` is a per-type counter (`{ basic: 12, tank: 3, ... }`) — it
 exists so kill-count-driven systems (unlocks, achievements, alternative gold

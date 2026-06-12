@@ -20,8 +20,8 @@ const done   = isRunOver(state)         // true when phase === 'dead'
 ### Combat phase
 1. HP regen (if `stats.regen > 0`)
 2. Move all enemies toward origin (player position = 0,0 in sim space)
-3. Enemy melee hits (enemies within dist < 1.0 deal damage and are removed —
-   a trade, credited as a kill)
+3. Enemy melee: enemies within dist < 1.0 persist and swing on their own
+   cooldown (`template.attackMs`, per-enemy `lastHitTick`)
 4. Auto-attack: if `ticksSinceAttack >= attackIntervalTicks` and enemies in range:
    - Find nearest enemy within `stats.attackRange`
    - `calcDamage(...)` with current RNG
@@ -29,12 +29,26 @@ const done   = isRunOver(state)         // true when phase === 'dead'
 5. Player death check: if `hp ≤ 0` → `phase = 'dead'`
 6. Wave clear check: if `enemies.length === 0` → `generateGate()` → `phase = 'gate'`
 
-Every credited kill (attack or melee trade) goes through `creditKill()`:
-xp, `player.kills[type]` increment, lifesteal, and a gold drop roll
-(`sim/gold.js`).
+Only player attacks kill. Each kill goes through `creditKill()`: xp,
+`player.kills[type]` increment, lifesteal, and a gold drop roll
+(`sim/gold.js`). Death-on-contact was removed — it let ehp builds
+auto-clear waves and starved the kill-driven economy. It may return later
+as a thorns-style player stat (attackers die to reflected damage).
+
+### Melee balance model
+With persistent attackers, damage taken per wave scales with time-to-kill,
+not enemy count — survival is a dps race, with partial recovery at each
+gate (`GATE_HEAL_FRACTION`, see docs/sim/gate.md). Tuning targets
+(autopilot, headless): wave 1 costs a few hp; death lands around depth 5–6
+when tanks join the mix. Manual builds push past by out-scaling.
 
 ### Dead phase
 No-op — run is over.
+
+## Enemy ids
+Enemy ids come from `state.nextId`, threaded through `spawnWave()` and
+stored in the save snapshot — never a module-level counter, which would
+diverge across resumed or parallel runs and break determinism.
 
 ## Enemy positions
 Enemies exist in a flat 2D space (x, z). Player is always at origin (0, 0).

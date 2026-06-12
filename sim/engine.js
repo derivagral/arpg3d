@@ -25,9 +25,9 @@ import { calcDamage, aggregateDamageModifiers } from './damage.js'
 import { autoPickGate } from './autopilot.js'
 
 // ── Base player stats (before affixes) ──────────────────────────────────────
-const BASE_PLAYER = {
-  damage: 10,
-  attackSpeed: 1000,   // ms between attacks
+export const BASE_PLAYER = {
+  damage: 20,
+  attackSpeed: 800,    // ms between attacks
   attackRange: 8,
   speed: 0.15,
   critChance: 0,
@@ -40,11 +40,14 @@ const BASE_PLAYER = {
 }
 
 // ── Enemy templates for the ledge zone ──────────────────────────────────────
-const ENEMY_TEMPLATES = {
-  basic:   { hp: 30,  damage: 5,  speed: 0.04, xp: 5  },
-  fast:    { hp: 15,  damage: 3,  speed: 0.08, xp: 4  },
-  tank:    { hp: 100, damage: 10, speed: 0.02, xp: 15 },
-  swarm:   { hp: 8,   damage: 2,  speed: 0.06, xp: 2  },
+// damage/attackMs are melee swing values: in-range enemies persist and swing
+// on this cooldown (per-enemy). Tuned with BASE_PLAYER so autopilot runs die
+// around depth 5-6 (when tanks join); see docs/sim/engine.md balance model.
+export const ENEMY_TEMPLATES = {
+  basic:   { hp: 20, damage: 2, speed: 0.04, xp: 5,  attackMs: 2500 },
+  fast:    { hp: 10, damage: 1, speed: 0.08, xp: 4,  attackMs: 1200 },
+  tank:    { hp: 70, damage: 6, speed: 0.02, xp: 15, attackMs: 4000 },
+  swarm:   { hp: 6,  damage: 1, speed: 0.06, xp: 2,  attackMs: 1500 },
 }
 
 // Enemies per depth tier
@@ -57,10 +60,6 @@ const waveForDepth = (depth) => {
   return { count: base, types }
 }
 
-// ── ID counter (reset per run, stored in state) ──────────────────────────────
-let _nextId = 1
-const newId = () => _nextId++
-
 /**
  * @typedef {Object} EnemyData
  * @property {number} id
@@ -72,6 +71,8 @@ const newId = () => _nextId++
  * @property {number} damage
  * @property {number} speed
  * @property {number} xp
+ * @property {number} attackMs     - ms between melee swings while in range
+ * @property {number} lastHitTick  - tick of this enemy's last melee swing
  */
 
 /**
@@ -93,6 +94,7 @@ const newId = () => _nextId++
  * @property {number}   elapsed      - ms since run start
  * @property {string}   phase        - 'combat' | 'gate' | 'dead'
  * @property {number}   depth        - gates completed
+ * @property {number}   nextId       - next enemy id (threaded through state for determinism)
  * @property {PlayerSim} player
  * @property {EnemyData[]} enemies
  * @property {import('./gate.js').Gate|null} gate
@@ -106,10 +108,9 @@ const newId = () => _nextId++
  * @returns {SimState}
  */
 export const createState = (seed) => {
-  _nextId = 1
   const rng = createRNG(seed)
   const pity = createPity()
-  const enemies = spawnWave(1, rng)
+  const enemies = spawnWave(1, rng, 1)
 
   return {
     seed,
@@ -118,6 +119,7 @@ export const createState = (seed) => {
     elapsed: 0,
     phase: 'combat',
     depth: 1,
+    nextId: enemies.nextId,
 
     player: {
       hp: BASE_PLAYER.maxHp,
@@ -136,11 +138,12 @@ export const createState = (seed) => {
   }
 }
 
-// Spawn a wave of enemies around origin, returns { list, rng }
-const spawnWave = (depth, rngState) => {
+// Spawn a wave of enemies around origin, returns { list, rng, nextId }
+const spawnWave = (depth, rngState, startId) => {
   const { count, types } = waveForDepth(depth)
   const list = []
   let rng = rngState
+  let nextId = startId
 
   for (let i = 0; i < count; i++) {
     // Pick type
@@ -158,7 +161,7 @@ const spawnWave = (depth, rngState) => {
     dist = 12 + dist * 6
 
     list.push({
-      id: newId(),
+      id: nextId++,
       type,
       hp: tmpl.hp,
       maxHp: tmpl.hp,
@@ -167,10 +170,12 @@ const spawnWave = (depth, rngState) => {
       damage: tmpl.damage,
       speed: tmpl.speed,
       xp: tmpl.xp,
+      attackMs: tmpl.attackMs,
+      lastHitTick: 0,
     })
   }
 
-  return { list, rng }
+  return { list, rng, nextId }
 }
 
 /**
@@ -204,11 +209,12 @@ export const tick = (state, deltaMs, input = {}) => {
     if (choice !== null) {
       s = resolveGate(s, choice)
       // Spawn next wave
-      const wave = spawnWave(s.depth, s.rng)
+      const wave = spawnWave(s.depth, s.rng, s.nextId)
       s = {
         ...s,
         enemies: wave.list,
         rng: wave.rng,
+        nextId: wave.nextId,
         log: [...s.log, { tick: s.tick, type: 'wave_start', payload: { depth: s.depth } }]
       }
     }
@@ -249,7 +255,7 @@ export const tick = (state, deltaMs, input = {}) => {
     player.xp += enemy.xp
     player.kills = { ...player.kills, [enemy.type]: (player.kills[enemy.type] ?? 0) + 1 }
     if (stats.lifeSteal > 0) {
-      player.hp = Math.min(stats.maxHp, player.hp + stats.lifeSteal)
+      player.hp = Math.min(player.maxHp, player.hp + stats.lifeSteal)
     }
     const [gold, goldRng] = rollGoldDrop(enemy.type, rngState)
     if (gold > 0) {
@@ -259,22 +265,18 @@ export const tick = (state, deltaMs, input = {}) => {
     return goldRng
   }
 
-  // Enemy melee hits (within range 1.0) — contact is a trade: the player
-  // takes damage, the enemy is consumed and pays out like any other kill
-  {
-    const survivors = []
-    for (const e of enemies) {
-      const dist = Math.sqrt(e.x * e.x + e.z * e.z)
-      if (dist < 1.0) {
-        player.hp -= e.damage
-        log.push({ tick: s.tick, type: 'enemy_hit', payload: { id: e.id, damage: e.damage } })
-        rng = creditKill(e, rng)
-      } else {
-        survivors.push(e)
-      }
-    }
-    enemies = survivors
-  }
+  // Enemy melee (within range 1.0): enemies persist and swing on their own
+  // cooldown. Only player attacks kill — death-on-contact is gone (it let
+  // ehp builds auto-clear waves; may return as a thorns-style player stat).
+  enemies = enemies.map(e => {
+    const dist = Math.sqrt(e.x * e.x + e.z * e.z)
+    if (dist >= 1.0) return e
+    const swingTicks = Math.max(5, Math.round(e.attackMs / 16.67))
+    if (s.tick - e.lastHitTick < swingTicks) return e
+    player.hp -= e.damage
+    log.push({ tick: s.tick, type: 'enemy_hit', payload: { id: e.id, damage: e.damage } })
+    return { ...e, lastHitTick: s.tick }
+  })
 
   // Auto-attack: fire at nearest enemy within range
   const attackIntervalTicks = Math.max(5, Math.round(stats.attackSpeed / 16.67))

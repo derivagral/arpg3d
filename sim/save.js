@@ -28,6 +28,7 @@
  */
 
 import { AFFIX_POOL } from './affixes.js'
+import { ENEMY_TEMPLATES } from './engine.js'
 
 export const GAME_ID = 'arpg3d'
 export const SAVE_SCHEMA_VERSION = 1
@@ -76,6 +77,7 @@ export const serializeSim = (state) => ({
   elapsed: state.elapsed,
   phase: state.phase,
   depth: state.depth,
+  nextId: state.nextId,
   player: {
     hp: state.player.hp,
     maxHp: state.player.maxHp,
@@ -128,6 +130,8 @@ export const hydrateSim = (snap) => {
     elapsed: snap.elapsed,
     phase: snap.phase,
     depth: snap.depth,
+    // older snapshots predate the threaded id counter — resume past live ids
+    nextId: snap.nextId ?? Math.max(0, ...snap.enemies.map(e => e.id)) + 1,
     player: {
       hp: snap.player.hp,
       maxHp: snap.player.maxHp,
@@ -137,7 +141,12 @@ export const hydrateSim = (snap) => {
       lastAttackTick: snap.player.lastAttackTick,
       affixes,
     },
-    enemies: snap.enemies.map(e => ({ ...e })),
+    // melee swing fields are additive — older snapshots default from template
+    enemies: snap.enemies.map(e => ({
+      attackMs: ENEMY_TEMPLATES[e.type]?.attackMs ?? 1500,
+      lastHitTick: 0,
+      ...e,
+    })),
     gate,
     pity: {
       droughts: { ...snap.pity.droughts },

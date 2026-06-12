@@ -109,8 +109,18 @@ export const rerollGate = (state) => {
 }
 
 /**
+ * Fraction of maxHp restored when a gate resolves (wave-clear recovery).
+ * Persistent melee enemies deal sustained chip damage — without recovery
+ * between waves, total hp would hard-cap run depth regardless of build.
+ * Partial (not full) so in-run damage still carries forward pressure.
+ */
+export const GATE_HEAL_FRACTION = 0.3
+
+/**
  * Apply the player's gate choice to state.
  * - Appends chosen affix to player.affixes
+ * - maxHp deltas grow the live pool (maxHp AND current hp)
+ * - Heals GATE_HEAL_FRACTION of maxHp (wave-clear recovery)
  * - Resets pity droughts for chosen tags
  * - Transitions phase back to 'combat'
  *
@@ -126,11 +136,15 @@ export const resolveGate = (state, choiceIdx) => {
   const newAffixes = [...player.affixes, chosen.affix]
   const newPity = resetDroughts(pity, chosen.tags)
 
+  const maxHpGain = chosen.affix.delta.maxHp ?? 0
+  const maxHp = player.maxHp + maxHpGain
+  const hp = Math.min(maxHp, player.hp + maxHpGain + maxHp * GATE_HEAL_FRACTION)
+
   return {
     ...state,
     phase: 'combat',
     gate: null,
-    player: { ...player, affixes: newAffixes },
+    player: { ...player, affixes: newAffixes, maxHp, hp },
     pity: newPity,
     log: [...state.log, {
       tick: state.tick,
