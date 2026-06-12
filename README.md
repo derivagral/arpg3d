@@ -22,9 +22,12 @@ sim/              Pure game logic — zero browser deps, Node-importable
   gate.js         Gate generation (2-3 options), resolution
   engine.js       tick(state, deltaMs, input) -> newState
   autopilot.js    Naive scoring — intentionally beatable by manual play
+  save.js         Save file codec: versioned snapshots, export codes
 
 src/              ES module entry point
-  main.js         Bootstrap: sim state + Babylon.js + dev surface
+  main.js         Bootstrap: main menu -> sim state + Babylon.js + autosave
+  storage/        localStorage save slot CRUD (saveStore.js)
+  ui/             Pre-Babylon DOM menu (mainMenu.js)
 
 js/               Legacy Babylon.js render layer (browser globals)
   config.js       Game balance constants
@@ -62,6 +65,14 @@ boost under-represented tags — if you haven't seen crit in 5 gates, it gets 2x
 
 **Dead**: run is over. Same seed replays identically.
 
+## Saving
+
+The page boots into a save slot menu (pre-Babylon, plain DOM). Runs live in
+`localStorage` and autosave on wave clear, death, and tab close. Slots can be
+exported as JSON or a portable `arpg3d.v1.<base64url>` code and re-imported
+anywhere — saves carry a schema version and are validated/migrated on load.
+See `docs/save-system.md` for the format and versioning rules.
+
 ## Controls
 
 - **WASD / Arrow Keys** — move player
@@ -77,6 +88,8 @@ window.__sim()                // live SimState snapshot
 window.__pickGate(0)          // manually resolve current gate (0, 1, or 2)
 window.__setAutopilot(false)  // disable autopilot for manual play
 window.__newRun(42)           // restart with specific seed
+window.__save()               // force-save the active slot
+window.__store                // save store (list/get/remove/exportCode/...)
 
 // Legacy render layer
 window.__game                 // Babylon.js Game instance
