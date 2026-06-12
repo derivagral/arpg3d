@@ -78,6 +78,29 @@ class Marker {
         this.ringMat = ringMat;
         this.meshes.push(ring);
 
+        // Translucent activation area — a flat filled disc on the ground so the
+        // zone's extent is unmistakable, not just a (bloom-fuzzy) outline. Kept
+        // out of the glow layer so it stays a soft shade rather than blowing out.
+        const area = BABYLON.MeshBuilder.CreateCylinder('markerArea_' + id, {
+            height: 0.02,
+            diameter: this.radius * 2,
+            tessellation: 48
+        }, this.scene);
+        area.position = new BABYLON.Vector3(this.position.x, 0.18, this.position.z);
+        area.isPickable = false;
+
+        const areaMat = new BABYLON.StandardMaterial('markerAreaMat_' + id, this.scene);
+        areaMat.emissiveColor = this.glowColor;
+        areaMat.diffuseColor = this.glowColor;
+        areaMat.alpha = 0.13;
+        areaMat.disableDepthWrite = true;
+        area.material = areaMat;
+        area.renderingGroupId = 1;
+
+        this.areaDisc = area;
+        this.areaMat = areaMat;
+        this.meshes.push(area);
+
         // Floating name label so the player can tell markers apart at a glance.
         this.createLabel(this.config.name || id);
     }
@@ -197,6 +220,13 @@ class Marker {
         this.coreMat.emissiveColor = c;
         this.ringMat.emissiveColor = c;
         this.ringMat.alpha = (state === 'spent') ? 0.15 : 0.5;
+
+        if (this.areaMat) {
+            this.areaMat.emissiveColor = c;
+            this.areaMat.diffuseColor = c;
+            const areaAlpha = { active: 0.24, success: 0.2, fail: 0.2, spent: 0.05 };
+            this.areaMat.alpha = areaAlpha[state] != null ? areaAlpha[state] : 0.13;
+        }
     }
 
     isPlayerInside(playerPosition) {

@@ -149,6 +149,36 @@ class AreaManager {
         // these tiles were untracked and leaked on every area transition.
         this.areaTiles = [];
 
+        // Build one decorative tile. Height, vertical offset, and rotation are
+        // jittered so overlapping tiles don't share a coplanar top face (which
+        // caused z-fighting flicker), and edge outlines make them read as
+        // deliberate pads rather than flat green squares — no textures needed.
+        const makeTile = (x, z, size) => {
+            const idx = this.areaTiles.length;
+            const height = 0.12 + Math.random() * 0.14;
+            const tile = BABYLON.MeshBuilder.CreateBox(`tile_${idx}`, {
+                width: size, height, depth: size
+            }, scene);
+            tile.position = new BABYLON.Vector3(x, 0.12 + Math.random() * 0.16, z);
+            tile.rotation.y = Math.random() * Math.PI;
+
+            const tileMat = new BABYLON.StandardMaterial(`tileMat_${idx}`, scene);
+            tileMat.diffuseColor = new BABYLON.Color3(
+                Math.random() * 0.15 + 0.15,
+                Math.random() * 0.18 + 0.40,
+                Math.random() * 0.15 + 0.15
+            );
+            tileMat.specularColor = new BABYLON.Color3(0, 0, 0);
+            tile.material = tileMat;
+
+            tile.enableEdgesRendering();
+            tile.edgesWidth = 2.0;
+            tile.edgesColor = new BABYLON.Color4(0.1, 0.35, 0.18, 0.7);
+
+            this.areaTiles.push(tile);
+            return tile;
+        };
+
         // The quadrant cross + clustered decoration only make sense in areas that
         // actually host objective markers. Other areas (home base) get a lighter,
         // marker-free scatter.
@@ -156,20 +186,11 @@ class AreaManager {
 
         if (!hasMarkers) {
             for (let i = 0; i < 10; i++) {
-                const x = (Math.random() - 0.5) * groundSize * 0.8;
-                const z = (Math.random() - 0.5) * groundSize * 0.8;
-                const tile = BABYLON.MeshBuilder.CreateBox(`tile_${i}`, {
-                    width: 3, height: 0.1, depth: 3
-                }, scene);
-                tile.position = new BABYLON.Vector3(x, 0.2, z);
-                const tileMat = new BABYLON.StandardMaterial(`tileMat_${i}`, scene);
-                tileMat.diffuseColor = new BABYLON.Color3(
-                    Math.random() * 0.2 + 0.15,
-                    Math.random() * 0.2 + 0.45,
-                    Math.random() * 0.2 + 0.15
+                makeTile(
+                    (Math.random() - 0.5) * groundSize * 0.8,
+                    (Math.random() - 0.5) * groundSize * 0.8,
+                    3
                 );
-                tile.material = tileMat;
-                this.areaTiles.push(tile);
             }
             return;
         }
@@ -196,24 +217,13 @@ class AreaManager {
         // random scatter across the whole map.
         const q = groundSize / 4;
         const quadCenters = [[q, q], [-q, q], [q, -q], [-q, -q]];
-        quadCenters.forEach((center, qi) => {
+        quadCenters.forEach((center) => {
             for (let i = 0; i < 3; i++) {
-                const x = center[0] + (Math.random() - 0.5) * groundSize * 0.16;
-                const z = center[1] + (Math.random() - 0.5) * groundSize * 0.16;
-
-                const tile = BABYLON.MeshBuilder.CreateBox(`tile_${qi}_${i}`, {
-                    width: 2, height: 0.1, depth: 2
-                }, scene);
-                tile.position = new BABYLON.Vector3(x, 0.2, z);
-
-                const tileMat = new BABYLON.StandardMaterial(`tileMat_${qi}_${i}`, scene);
-                tileMat.diffuseColor = new BABYLON.Color3(
-                    Math.random() * 0.15 + 0.15,
-                    Math.random() * 0.15 + 0.42,
-                    Math.random() * 0.15 + 0.15
+                makeTile(
+                    center[0] + (Math.random() - 0.5) * groundSize * 0.16,
+                    center[1] + (Math.random() - 0.5) * groundSize * 0.16,
+                    2
                 );
-                tile.material = tileMat;
-                this.areaTiles.push(tile);
             }
         });
     }
