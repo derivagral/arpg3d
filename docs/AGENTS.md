@@ -17,6 +17,7 @@ Each subsystem is designed so its context fits in a single focused session.
 | Babylon.js render / visuals      | docs/render/overview.md, docs/render/babylon.md  | src/main.js, js/game.js                   |
 | New zone type                    | docs/sim/engine.md, docs/sim/gate.md             | sim/engine.js, sim/gate.js                |
 | Writing tests for sim            | docs/sim/overview.md                             | sim/**/*.js (import in Node, no browser)  |
+| Save format / persistence / menu | docs/save-system.md                              | sim/save.js, src/storage/saveStore.js, src/ui/mainMenu.js |
 | Internal API design              | docs/sim/overview.md, docs/render/overview.md    | sim/engine.js, src/main.js                |
 
 ## Rules for agents

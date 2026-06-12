@@ -6,11 +6,12 @@
  *   - BABYLON global is available (CDN)
  *   - Game, Player, SceneManager, etc. are available (js/ globals)
  *
- * Responsibilities:
- *   1. Create the Babylon.js engine and Game instance (render layer)
- *   2. Create sim state (pure, deterministic)
+ * Boot flow:
+ *   1. Show the pre-Babylon main menu (src/ui/mainMenu.js) — save slot CRUD
+ *   2. On slot selection, create the Babylon.js engine and Game instance
  *   3. Hook into the render loop — sim.tick() runs first, then render syncs
- *   4. Expose debug surface on window.__sim, window.__simInput
+ *   4. Autosave the active slot on wave clear, death, and page hide
+ *   5. Expose debug surface on window.__sim, window.__save, etc.
  *
  * The old Game.startGameLoop() is still running internally (it handles
  * Babylon.js enemy meshes, projectiles, UI, etc. via js/ legacy code).
@@ -19,10 +20,22 @@
  */
 
 import { createState, tick, isRunOver } from '../sim/engine.js'
-import { autoPickGate } from '../sim/autopilot.js'
+import { createSaveStore } from './storage/saveStore.js'
+import { showMainMenu } from './ui/mainMenu.js'
 
 window.addEventListener('DOMContentLoaded', () => {
-  if (!BABYLON.Engine.isSupported()) {
+  // The menu is deliberately pre-Babylon: it must work even if the CDN
+  // script is still loading (or failed), so WebGL support is checked at
+  // game start, not here.
+  const store = createSaveStore()
+  showMainMenu({
+    store,
+    onStart: ({ slotId, simState }) => startGame({ store, slotId, initialSim: simState }),
+  })
+})
+
+function startGame({ store, slotId, initialSim }) {
+  if (typeof BABYLON === 'undefined' || !BABYLON.Engine.isSupported()) {
     alert("WebGL not supported. Please use a modern browser.")
     return
   }
@@ -38,13 +51,25 @@ window.addEventListener('DOMContentLoaded', () => {
   const game = new Game(engine, canvas)
 
   // ── Sim state (primary source of truth) ───────────────────────────────────
-  let simState = createState(Date.now())
+  let simState = initialSim
 
   // Pending input for next tick
   let pendingInput = {
     gateChoice: null,  // null = let autopilot decide (if enabled)
     autopilot: true,   // autopilot on by default
   }
+
+  // ── Autosave ───────────────────────────────────────────────────────────────
+  // Persist the active slot at checkpoints: wave clear (combat→gate), death,
+  // and page hide. localStorage writes are a few KB — cheap at this cadence.
+  const persist = () => {
+    try {
+      store.update(slotId, simState)
+    } catch (e) {
+      console.warn('[save] autosave failed:', e)
+    }
+  }
+  window.addEventListener('pagehide', persist)
 
   // FPS counter (dev only)
   let fpsEl = null
@@ -60,14 +85,21 @@ window.addEventListener('DOMContentLoaded', () => {
     const input = { ...pendingInput }
     pendingInput.gateChoice = null  // consume single-frame input
 
+    const prevPhase = simState.phase
     simState = tick(simState, deltaMs, input)
 
     // Sync key sim stats → legacy render layer so UI reflects sim state
     syncSimToRender(simState, game)
 
+    // Checkpoint on phase transitions worth keeping (wave clear, death)
+    if (simState.phase !== prevPhase && (simState.phase === 'gate' || simState.phase === 'dead')) {
+      persist()
+    }
+
     // Auto-restart sim when run ends — no alert, no interruption to the
-    // playable legacy game. Inspect the completed run via window.__sim()
-    // before it resets (it's replaced on the next frame).
+    // playable legacy game. The slot keeps the new run from the next
+    // checkpoint on; inspect the completed run via window.__sim() before
+    // it resets (it's replaced on the next frame).
     if (isRunOver(simState)) {
       simState = createState(Date.now())
     }
@@ -84,6 +116,10 @@ window.addEventListener('DOMContentLoaded', () => {
     window.__pickGate    = (idx) => { pendingInput.gateChoice = idx }
     window.__setAutopilot = (on) => { pendingInput.autopilot = on }
     window.__newRun      = (seed) => { simState = createState(seed ?? Date.now()) }
+
+    // Persistence controls
+    window.__save  = () => { persist(); return store.get(slotId) }
+    window.__store = store
 
     // FPS counter
     fpsEl = document.createElement('div')
@@ -114,6 +150,8 @@ window.addEventListener('DOMContentLoaded', () => {
       '  window.__pickGate(0|1|2)  — manually resolve next gate',
       '  window.__setAutopilot(false) — take manual control',
       '  window.__newRun(seed?)    — restart with optional seed',
+      '  window.__save()           — force-save active slot now',
+      '  window.__store            — save store (list/get/remove/...)',
       '',
       'Legacy (render layer):',
       '  window.__game             — Babylon.js Game instance',
@@ -140,7 +178,7 @@ window.addEventListener('DOMContentLoaded', () => {
   if (/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
     engine.setHardwareScalingLevel(2)
   }
-})
+}
 
 // ── Sync sim state → Babylon.js render layer ──────────────────────────────
 // The sim and the legacy game are currently parallel — the legacy game owns
