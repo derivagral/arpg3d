@@ -152,27 +152,33 @@ const CONFIG = {
         }
     },
 
-    // In-map objective markers, keyed by area name. One per quadrant for now.
-    // Edit this table to experiment with marker types, effects, and placement —
-    // MarkerManager reads it directly, no code changes required.
+    // In-map objective markers.
     //
-    // Fields:
+    // `pool` is the list of marker ARCHETYPES (no placement info). `areas` maps
+    // an area to its placement slots and a selection strategy; MarkerManager
+    // fills the slots from the pool each time the area is entered. To experiment:
+    // add pool entries, tweak weights, change slots, or swap the strategy —
+    // no code changes required. New strategies (player choice, depth-scaled,
+    // pity, ...) register in MarkerManager.strategies.
+    //
+    // Pool entry fields:
     //   id          unique key (also the buff id namespace)
-    //   quadrant    NE | NW | SE | SW | C (placement, scaled to area size)
+    //   weight      relative selection weight (default 1)
     //   radius      area-check / ground-ring radius
     //   color/glow  [r,g,b] visuals
     //   trigger     'onEnter' | 'whileInside' | 'objective'
     //   buff        { id, name, mods, duration? }  (mods: damageMore[], flatDamage,
     //                 critChance, speedMult, attackSpeedMult, maxHpMult, goldFind, itemFind)
-    //   objective   { type:'kills', goal, duration, spawnMods?, reward? }
+    //   objective   { type:'kills', goal, duration, armDelay?, spawnMods?, reward? }
+    //   quadrant    only used by the 'fixed' strategy (NE | NW | SE | SW | C)
     markers: {
-        mobArea: [
+        pool: [
             {
                 // Shrine: one-shot timed power buff, no downside.
                 id: 'shrine_power',
                 name: 'Shrine of Power',
                 desc: '+30% Damage for 20s',
-                quadrant: 'NE',
+                weight: 1,
                 radius: 4,
                 color: [1, 0.3, 0.3],
                 glowColor: [1, 0.6, 0.3],
@@ -185,11 +191,28 @@ const CONFIG = {
                 }
             },
             {
+                // Shrine variant: one-shot attack-speed burst.
+                id: 'shrine_haste',
+                name: 'Shrine of Haste',
+                desc: '25% Faster attacks for 20s',
+                weight: 1,
+                radius: 4,
+                color: [0.3, 1, 0.9],
+                glowColor: [0.5, 1, 1],
+                trigger: 'onEnter',
+                buff: {
+                    id: 'shrine_haste',
+                    name: 'Hastened',
+                    duration: 20000,
+                    mods: { attackSpeedMult: 0.75 }
+                }
+            },
+            {
                 // Glass Cavern: linger tradeoff — big damage, fragile, only inside.
                 id: 'glass_cavern',
                 name: 'Glass Cavern',
                 desc: '+50% Damage but -40% Max HP while inside',
-                quadrant: 'NW',
+                weight: 1,
                 radius: 6,
                 color: [0.4, 0.6, 1],
                 glowColor: [0.6, 0.8, 1],
@@ -201,11 +224,27 @@ const CONFIG = {
                 }
             },
             {
+                // Assassin's Hollow: linger tradeoff — crits and speed over raw damage.
+                id: 'assassin_hollow',
+                name: "Assassin's Hollow",
+                desc: '+30% Crit & +15% Speed but -25% Damage while inside',
+                weight: 1,
+                radius: 6,
+                color: [0.6, 0.3, 0.9],
+                glowColor: [0.75, 0.5, 1],
+                trigger: 'whileInside',
+                buff: {
+                    id: 'assassin_hollow',
+                    name: 'Shadowed',
+                    mods: { critChance: 0.3, speedMult: 1.15, damageMore: [-25] }
+                }
+            },
+            {
                 // Culling Grounds: timed kill objective with harder spawns + payoff.
                 id: 'culling_grounds',
                 name: 'Culling Grounds',
                 desc: 'Clear 20 enemies in 30s — 2x spawns, big reward',
-                quadrant: 'SE',
+                weight: 1,
                 radius: 7,
                 color: [1, 0.4, 0.1],
                 glowColor: [1, 0.6, 0.2],
@@ -232,7 +271,7 @@ const CONFIG = {
                 id: 'greed_totem',
                 name: 'Greed Totem',
                 desc: '2x Gold & Item find but -30% Move Speed while inside',
-                quadrant: 'SW',
+                weight: 1,
                 radius: 6,
                 color: [1, 0.84, 0],
                 glowColor: [1, 0.9, 0.3],
@@ -243,7 +282,14 @@ const CONFIG = {
                     mods: { goldFind: 2.0, itemFind: 2.0, speedMult: 0.7 }
                 }
             }
-        ]
+        ],
+
+        areas: {
+            mobArea: {
+                slots: ['NE', 'NW', 'SE', 'SW'],
+                strategy: 'random' // weighted draw without duplicates
+            }
+        }
     },
 
     upgrades: [

@@ -21,6 +21,37 @@ class MarkerManager {
         this.game = game;
         this.markers = [];
         this.activeObjective = null; // only one objective runs at a time
+
+        // Selection strategies: (pool, slots, ctx) -> array of pool defs, one per
+        // slot (null = leave slot empty). ctx carries { game, areaName } so future
+        // strategies can key off depth, player stats, currency, prior choices, etc.
+        // Register new strategies here ('playerChoice', 'depthScaled', 'pity', ...)
+        // and reference them by name from CONFIG.markers.areas[area].strategy.
+        this.strategies = {
+            // Weighted draw without duplicates. Falls back to refilling the pool
+            // if there are more slots than pool entries.
+            random: (pool, slots) => {
+                let available = [...pool];
+                return slots.map(() => {
+                    if (!available.length) {
+                        if (!pool.length) return null;
+                        available = [...pool]; // pool smaller than slots: allow repeats
+                    }
+                    const total = available.reduce((s, d) => s + (d.weight || 1), 0);
+                    let r = Math.random() * total;
+                    for (let i = 0; i < available.length; i++) {
+                        r -= (available[i].weight || 1);
+                        if (r <= 0) return available.splice(i, 1)[0];
+                    }
+                    return available.pop();
+                });
+            },
+
+            // Deterministic placement: each slot takes the pool entry whose
+            // `quadrant` field matches it. Handy for testing a specific layout.
+            fixed: (pool, slots) =>
+                slots.map(slot => pool.find(d => d.quadrant === slot) || null)
+        };
     }
 
     // Quadrant -> [x, z] offset, scaled to the area size.
@@ -36,14 +67,21 @@ class MarkerManager {
     spawn(areaName) {
         this.clear();
 
-        const defs = (CONFIG.markers && CONFIG.markers[areaName]) || [];
-        if (!defs.length) return;
+        const cfg = CONFIG.markers || {};
+        const areaCfg = cfg.areas && cfg.areas[areaName];
+        if (!areaCfg || !areaCfg.slots || !areaCfg.slots.length) return;
+
+        const pool = cfg.pool || [];
+        const strategy = this.strategies[areaCfg.strategy] || this.strategies.random;
+        const picks = strategy(pool, areaCfg.slots, { game: this.game, areaName });
 
         const area = this.game.areaManager.getCurrentArea();
         const groundSize = (area && area.groundSize) || 60;
 
-        defs.forEach(def => {
-            const off = this.quadrantOffset(def.quadrant, groundSize);
+        areaCfg.slots.forEach((slot, i) => {
+            const def = picks[i];
+            if (!def) return;
+            const off = this.quadrantOffset(slot, groundSize);
             const pos = new BABYLON.Vector3(off[0], 0, off[1]);
             const marker = new Marker(this.game.scene, pos, def);
             this.markers.push(marker);

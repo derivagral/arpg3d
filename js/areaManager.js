@@ -182,7 +182,8 @@ class AreaManager {
         // The quadrant cross + clustered decoration only make sense in areas that
         // actually host objective markers. Other areas (home base) get a lighter,
         // marker-free scatter.
-        const hasMarkers = !!(CONFIG.markers && CONFIG.markers[this.currentArea]);
+        const hasMarkers = !!(CONFIG.markers && CONFIG.markers.areas &&
+                              CONFIG.markers.areas[this.currentArea]);
 
         if (!hasMarkers) {
             for (let i = 0; i < 10; i++) {

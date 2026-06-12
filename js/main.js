@@ -141,6 +141,13 @@ window.addEventListener('DOMContentLoaded', () => {
             toggleDifficultyScaling: () => {
                 game.spawnManager.difficultyScaling.enabled = !game.spawnManager.difficultyScaling.enabled;
                 console.log(`Difficulty scaling: ${game.spawnManager.difficultyScaling.enabled ? 'ON' : 'OFF'}`);
+            },
+
+            // Re-draw the in-map markers for the current area from the pool
+            rerollMarkers: () => {
+                game.markerManager.spawn(game.areaManager.currentArea);
+                const names = game.markerManager.markers.map(m => m.def.name);
+                console.log('Markers rerolled:', names.join(', ') || '(none for this area)');
             }
         };
         

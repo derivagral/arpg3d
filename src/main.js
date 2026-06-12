@@ -235,5 +235,11 @@ function buildDebugCommands(game, engine) {
     toggleDifficultyScaling: () => {
       game.spawnManager.difficultyScaling.enabled = !game.spawnManager.difficultyScaling.enabled
     },
+    // Re-draw the in-map markers for the current area from CONFIG.markers.pool
+    rerollMarkers: () => {
+      game.markerManager.spawn(game.areaManager.currentArea)
+      const names = game.markerManager.markers.map(m => m.def.name)
+      console.log('[markers] rerolled:', names.join(', ') || '(none for this area)')
+    },
   }
 }
