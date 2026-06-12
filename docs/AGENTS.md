@@ -12,6 +12,7 @@ Each subsystem is designed so its context fits in a single focused session.
 | Tuning damage numbers            | docs/sim/damage.md, docs/sim/affixes.md          | sim/damage.js, sim/affixes.js             |
 | Adjusting pity feel              | docs/sim/pity.md                                 | sim/pity.js, sim/gate.js                  |
 | Gate generation / option count   | docs/sim/gate.md, docs/sim/affixes.md            | sim/gate.js, sim/affixes.js               |
+| Gold economy / drops / rerolls   | docs/sim/gold.md, docs/sim/gate.md               | sim/gold.js, sim/gate.js, sim/engine.js   |
 | Sim loop / phase transitions     | docs/sim/engine.md, docs/sim/overview.md         | sim/engine.js                             |
 | Autopilot tuning                 | docs/sim/overview.md                             | sim/autopilot.js                          |
 | Babylon.js render / visuals      | docs/render/overview.md, docs/render/babylon.md  | src/main.js, js/game.js                   |

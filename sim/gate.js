@@ -16,6 +16,7 @@
 import { rollAffix, ALL_TAGS } from './affixes.js'
 import { tickDroughts, resetDroughts } from './pity.js'
 import { nextInt } from './rng.js'
+import { rerollCost } from './gold.js'
 
 /**
  * @typedef {Object} GateOption
@@ -27,6 +28,7 @@ import { nextInt } from './rng.js'
  * @typedef {Object} Gate
  * @property {GateOption[]} options
  * @property {number} depth   — depth at which this gate was generated
+ * @property {number} rerolls — gold rerolls spent on this gate
  */
 
 /**
@@ -56,7 +58,54 @@ export const generateGate = (depth, rngState, pity, existingIds = []) => {
   const offeredTags = options.flatMap(o => o.tags)
   const newPity = tickDroughts(pity, offeredTags, ALL_TAGS)
 
-  return [{ options, depth }, rng, newPity]
+  return [{ options, depth, rerolls: 0 }, rng, newPity]
+}
+
+/**
+ * Reroll the current gate's options for gold.
+ * - No-op if there is no gate or the player can't afford rerollCost()
+ * - New options exclude held affixes AND the current offers, so a reroll
+ *   always changes the slate
+ * - Pity is deliberately untouched: droughts were already ticked when this
+ *   gate opened. A reroll is a re-draw of the same gate, not a new gate —
+ *   otherwise rerolling would pump pity boosts for free.
+ *
+ * @param {import('./engine.js').SimState} state
+ * @returns {import('./engine.js').SimState}
+ */
+export const rerollGate = (state) => {
+  const { gate, player, pity } = state
+  if (!gate) return state
+
+  const cost = rerollCost(gate.depth, gate.rerolls ?? 0)
+  if (player.gold < cost) return state
+
+  const usedIds = [
+    ...player.affixes.map(a => a.id),
+    ...gate.options.map(o => o.affix.id),
+  ]
+  const options = []
+  let rng = state.rng
+
+  for (let i = 0; i < gate.options.length; i++) {
+    const [affix, nextRng] = rollAffix(rng, pity, null, usedIds)
+    rng = nextRng
+    usedIds.push(affix.id)
+    options.push({ affix, tags: affix.tags })
+  }
+
+  const rerolls = (gate.rerolls ?? 0) + 1
+  return {
+    ...state,
+    rng,
+    gate: { ...gate, options, rerolls },
+    player: { ...player, gold: player.gold - cost },
+    log: [...state.log, {
+      tick: state.tick,
+      type: 'gate_rerolled',
+      payload: { depth: gate.depth, cost, rerolls }
+    }]
+  }
 }
 
 /**

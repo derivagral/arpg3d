@@ -81,12 +81,17 @@ export const serializeSim = (state) => ({
     maxHp: state.player.maxHp,
     gold: state.player.gold,
     xp: state.player.xp,
+    kills: { ...state.player.kills },
     lastAttackTick: state.player.lastAttackTick,
     affixes: state.player.affixes.map(serializeAffix),
   },
   enemies: state.enemies.map(e => ({ ...e })),
   gate: state.gate
-    ? { depth: state.gate.depth, options: state.gate.options.map(o => serializeAffix(o.affix)) }
+    ? {
+        depth: state.gate.depth,
+        rerolls: state.gate.rerolls ?? 0,
+        options: state.gate.options.map(o => serializeAffix(o.affix)),
+      }
     : null,
   pity: {
     droughts: { ...state.pity.droughts },
@@ -104,9 +109,11 @@ export const hydrateSim = (snap) => {
   const warnings = []
   const affixes = snap.player.affixes.map(a => hydrateAffix(a, warnings))
 
+  // kills and gate.rerolls are additive fields — older snapshots default them
   const gate = snap.gate
     ? {
         depth: snap.gate.depth,
+        rerolls: snap.gate.rerolls ?? 0,
         options: snap.gate.options.map(stored => {
           const affix = hydrateAffix(stored, warnings)
           return { affix, tags: affix.tags }
@@ -126,6 +133,7 @@ export const hydrateSim = (snap) => {
       maxHp: snap.player.maxHp,
       gold: snap.player.gold,
       xp: snap.player.xp,
+      kills: { ...(snap.player.kills ?? {}) },
       lastAttackTick: snap.player.lastAttackTick,
       affixes,
     },

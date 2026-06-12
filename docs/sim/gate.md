@@ -10,6 +10,7 @@ progression mechanic — no other way to gain affixes currently.
 Gate = {
   options: GateOption[],   // 2 options at depth < 3, 3 options at depth >= 3
   depth: number,           // depth at which this gate was generated
+  rerolls: number,         // gold rerolls spent on this gate (cost doubles each)
 }
 
 GateOption = {
@@ -38,6 +39,22 @@ resolveGate(state, choiceIdx)
   4. Transition phase → 'combat'
   5. Append to log: { tick, type: 'gate_resolved', payload: { choiceIdx, affixId, depth } }
 ```
+
+## Reroll flow (gold sink)
+```
+rerollGate(state)
+  1. No-op if no gate, or player.gold < rerollCost(gate.depth, gate.rerolls)
+  2. Re-roll all options, excluding held affixes AND the current offers
+     (a paid reroll always changes the slate)
+  3. Deduct cost, increment gate.rerolls
+  4. Append to log: { type: 'gate_rerolled', payload: { depth, cost, rerolls } }
+```
+Pity is deliberately untouched: droughts ticked when the gate opened, and a
+reroll is a re-draw of the same gate — ticking again would let players pump
+pity boosts by rerolling. Engine input: `{ gateReroll: true }` during the
+gate phase consumes the frame (options are picked from on a later tick).
+Cost curve and tuning intent live in docs/sim/gold.md. The autopilot never
+rerolls — gold judgement is a manual-play edge by design.
 
 ## Future gate types
 To add a new gate type (e.g., "Forge" where you upgrade an existing affix):

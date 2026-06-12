@@ -12,20 +12,26 @@ const done   = isRunOver(state)         // true when phase === 'dead'
 ## What tick() does per frame
 
 ### Gate phase
-1. If `input.gateChoice !== null` → `resolveGate(state, choice)` → spawn next wave → `phase = 'combat'`
-2. Else if `input.autopilot` → call `autoPickGate(gate, state)` → same as above
-3. Else → do nothing (wait for player input)
+1. If `input.gateReroll` → `rerollGate(state)` (gold sink, see docs/sim/gold.md) — consumes the frame
+2. Else if `input.gateChoice !== null` → `resolveGate(state, choice)` → spawn next wave → `phase = 'combat'`
+3. Else if `input.autopilot` → call `autoPickGate(gate, state)` → same as above
+4. Else → do nothing (wait for player input)
 
 ### Combat phase
 1. HP regen (if `stats.regen > 0`)
 2. Move all enemies toward origin (player position = 0,0 in sim space)
-3. Enemy melee hits (enemies within dist < 1.0 deal damage and are removed)
+3. Enemy melee hits (enemies within dist < 1.0 deal damage and are removed —
+   a trade, credited as a kill)
 4. Auto-attack: if `ticksSinceAttack >= attackIntervalTicks` and enemies in range:
    - Find nearest enemy within `stats.attackRange`
    - `calcDamage(...)` with current RNG
-   - If enemy hp ≤ 0: kill, grant XP, apply lifesteal
+   - If enemy hp ≤ 0: kill
 5. Player death check: if `hp ≤ 0` → `phase = 'dead'`
 6. Wave clear check: if `enemies.length === 0` → `generateGate()` → `phase = 'gate'`
+
+Every credited kill (attack or melee trade) goes through `creditKill()`:
+xp, `player.kills[type]` increment, lifesteal, and a gold drop roll
+(`sim/gold.js`).
 
 ### Dead phase
 No-op — run is over.

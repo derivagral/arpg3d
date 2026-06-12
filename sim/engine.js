@@ -19,7 +19,8 @@
 import { createRNG, next, nextInt } from './rng.js'
 import { deriveStats, AFFIX_POOL } from './affixes.js'
 import { createPity } from './pity.js'
-import { generateGate, resolveGate } from './gate.js'
+import { generateGate, resolveGate, rerollGate } from './gate.js'
+import { rollGoldDrop } from './gold.js'
 import { calcDamage, aggregateDamageModifiers } from './damage.js'
 import { autoPickGate } from './autopilot.js'
 
@@ -80,6 +81,7 @@ const newId = () => _nextId++
  * @property {import('./affixes.js').Affix[]} affixes
  * @property {number} gold
  * @property {number} xp
+ * @property {Object<string, number>} kills - per-enemy-type kill counts
  * @property {number} lastAttackTick - tick of last auto-attack
  */
 
@@ -123,6 +125,7 @@ export const createState = (seed) => {
       affixes: [],
       gold: 0,
       xp: 0,
+      kills: {},
       lastAttackTick: 0,
     },
 
@@ -174,13 +177,13 @@ const spawnWave = (depth, rngState) => {
  * Advance sim by one frame.
  * @param {SimState} state
  * @param {number} deltaMs
- * @param {{ gateChoice: number|null, autopilot: boolean }} input
+ * @param {{ gateChoice: number|null, autopilot: boolean, gateReroll: boolean }} input
  * @returns {SimState}
  */
 export const tick = (state, deltaMs, input = {}) => {
   if (state.phase === 'dead') return state
 
-  const { gateChoice = null, autopilot = true } = input
+  const { gateChoice = null, autopilot = true, gateReroll = false } = input
 
   let s = {
     ...state,
@@ -190,6 +193,10 @@ export const tick = (state, deltaMs, input = {}) => {
 
   // ── GATE PHASE ─────────────────────────────────────────────────────────────
   if (s.phase === 'gate') {
+    // Reroll consumes the frame — the (possibly new) options are picked from
+    // on a later tick. Insufficient gold makes rerollGate a no-op.
+    if (gateReroll) return rerollGate(s)
+
     const choice = gateChoice !== null ? gateChoice
                  : autopilot           ? autoPickGate(s.gate, s)
                  : null
@@ -236,16 +243,38 @@ export const tick = (state, deltaMs, input = {}) => {
     }
   })
 
-  // Enemy melee hits (within range 1.0)
-  enemies = enemies.filter(e => {
-    const dist = Math.sqrt(e.x * e.x + e.z * e.z)
-    if (dist < 1.0) {
-      player.hp -= e.damage
-      log.push({ tick: s.tick, type: 'enemy_hit', payload: { id: e.id, damage: e.damage } })
-      return false  // consumed on hit
+  // Credit an enemy death (any cause the player survives): kill count, xp,
+  // lifesteal, gold roll. Mutates the local player copy, returns next rng.
+  const creditKill = (enemy, rngState) => {
+    player.xp += enemy.xp
+    player.kills = { ...player.kills, [enemy.type]: (player.kills[enemy.type] ?? 0) + 1 }
+    if (stats.lifeSteal > 0) {
+      player.hp = Math.min(stats.maxHp, player.hp + stats.lifeSteal)
     }
-    return true
-  })
+    const [gold, goldRng] = rollGoldDrop(enemy.type, rngState)
+    if (gold > 0) {
+      player.gold += gold
+      log.push({ tick: s.tick, type: 'gold_drop', payload: { id: enemy.id, amount: gold } })
+    }
+    return goldRng
+  }
+
+  // Enemy melee hits (within range 1.0) — contact is a trade: the player
+  // takes damage, the enemy is consumed and pays out like any other kill
+  {
+    const survivors = []
+    for (const e of enemies) {
+      const dist = Math.sqrt(e.x * e.x + e.z * e.z)
+      if (dist < 1.0) {
+        player.hp -= e.damage
+        log.push({ tick: s.tick, type: 'enemy_hit', payload: { id: e.id, damage: e.damage } })
+        rng = creditKill(e, rng)
+      } else {
+        survivors.push(e)
+      }
+    }
+    enemies = survivors
+  }
 
   // Auto-attack: fire at nearest enemy within range
   const attackIntervalTicks = Math.max(5, Math.round(stats.attackSpeed / 16.67))
@@ -275,11 +304,7 @@ export const tick = (state, deltaMs, input = {}) => {
       log.push({ tick: s.tick, type: 'player_attack', payload: { targetId: nearest.id, damage, wasCrit } })
 
       if (nearest.hp <= 0) {
-        // Kill
-        player.xp += nearest.xp
-        if (stats.lifeSteal > 0) {
-          player.hp = Math.min(stats.maxHp, player.hp + stats.lifeSteal)
-        }
+        rng = creditKill(nearest, rng)
         log.push({ tick: s.tick, type: 'enemy_killed', payload: { id: nearest.id, type: nearest.type } })
         enemies = enemies.filter(e => e.id !== nearest.id)
       } else {

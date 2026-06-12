@@ -57,6 +57,7 @@ function startGame({ store, slotId, initialSim }) {
   let pendingInput = {
     gateChoice: null,  // null = let autopilot decide (if enabled)
     autopilot: true,   // autopilot on by default
+    gateReroll: false, // single-frame: spend gold to reroll gate options
   }
 
   // ── Autosave ───────────────────────────────────────────────────────────────
@@ -83,7 +84,8 @@ function startGame({ store, slotId, initialSim }) {
 
     const deltaMs = engine.getDeltaTime()
     const input = { ...pendingInput }
-    pendingInput.gateChoice = null  // consume single-frame input
+    pendingInput.gateChoice = null   // consume single-frame inputs
+    pendingInput.gateReroll = false
 
     const prevPhase = simState.phase
     simState = tick(simState, deltaMs, input)
@@ -114,6 +116,7 @@ function startGame({ store, slotId, initialSim }) {
 
     // Input controls
     window.__pickGate    = (idx) => { pendingInput.gateChoice = idx }
+    window.__rerollGate  = () => { pendingInput.gateReroll = true }
     window.__setAutopilot = (on) => { pendingInput.autopilot = on }
     window.__newRun      = (seed) => { simState = createState(seed ?? Date.now()) }
 
@@ -148,6 +151,7 @@ function startGame({ store, slotId, initialSim }) {
       'Sim API:',
       '  window.__sim()            — live SimState snapshot',
       '  window.__pickGate(0|1|2)  — manually resolve next gate',
+      '  window.__rerollGate()     — spend gold to reroll gate options',
       '  window.__setAutopilot(false) — take manual control',
       '  window.__newRun(seed?)    — restart with optional seed',
       '  window.__save()           — force-save active slot now',
