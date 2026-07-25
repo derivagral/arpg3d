@@ -20,6 +20,7 @@
  */
 
 import { createState, tick, isRunOver } from '../sim/engine.js'
+import { MOVE_POLICIES } from '../sim/movement.js'
 import { createSaveStore } from './storage/saveStore.js'
 import { showMainMenu } from './ui/mainMenu.js'
 
@@ -55,10 +56,34 @@ function startGame({ store, slotId, initialSim }) {
 
   // Pending input for next tick
   let pendingInput = {
-    gateChoice: null,  // null = let autopilot decide (if enabled)
-    autopilot: true,   // autopilot on by default
-    gateReroll: false, // single-frame: spend gold to reroll gate options
+    gateChoice: null,   // null = let autopilot decide (if enabled)
+    autopilot: true,    // autopilot on by default
+    gateReroll: false,  // single-frame: spend gold to reroll gate options
+    move: null,         // { x, z } manual movement; null = use movePolicy
+    movePolicy: 'center',
   }
+
+  // Manual movement capability: WASD/arrows feed the sim as an input vector,
+  // overriding the idle policy while keys are held. Manual play is not a
+  // separate code path — same tick, same balance, still deterministic.
+  const held = new Set()
+  const MOVE_KEYS = {
+    KeyW: [0, -1], ArrowUp: [0, -1],
+    KeyS: [0, 1],  ArrowDown: [0, 1],
+    KeyA: [-1, 0], ArrowLeft: [-1, 0],
+    KeyD: [1, 0],  ArrowRight: [1, 0],
+  }
+  const readMoveKeys = () => {
+    let x = 0, z = 0
+    for (const code of held) {
+      const v = MOVE_KEYS[code]
+      if (v) { x += v[0]; z += v[1] }
+    }
+    return (x === 0 && z === 0) ? null : { x, z }
+  }
+  window.addEventListener('keydown', (e) => { if (MOVE_KEYS[e.code]) held.add(e.code) })
+  window.addEventListener('keyup',   (e) => held.delete(e.code))
+  window.addEventListener('blur',    () => held.clear())
 
   // ── Autosave ───────────────────────────────────────────────────────────────
   // Persist the active slot at checkpoints: wave clear (combat→gate), death,
@@ -83,7 +108,7 @@ function startGame({ store, slotId, initialSim }) {
     if (game.state.paused) return
 
     const deltaMs = engine.getDeltaTime()
-    const input = { ...pendingInput }
+    const input = { ...pendingInput, move: pendingInput.move ?? readMoveKeys() }
     pendingInput.gateChoice = null   // consume single-frame inputs
     pendingInput.gateReroll = false
 
@@ -118,6 +143,11 @@ function startGame({ store, slotId, initialSim }) {
     window.__pickGate    = (idx) => { pendingInput.gateChoice = idx }
     window.__rerollGate  = () => { pendingInput.gateReroll = true }
     window.__setAutopilot = (on) => { pendingInput.autopilot = on }
+    window.__setMovePolicy = (name) => {
+      pendingInput.movePolicy = name
+      return Object.keys(MOVE_POLICIES)
+    }
+    window.__movePolicies = () => Object.keys(MOVE_POLICIES)
     window.__newRun      = (seed) => { simState = createState(seed ?? Date.now()) }
 
     // Persistence controls
@@ -153,6 +183,8 @@ function startGame({ store, slotId, initialSim }) {
       '  window.__pickGate(0|1|2)  — manually resolve next gate',
       '  window.__rerollGate()     — spend gold to reroll gate options',
       '  window.__setAutopilot(false) — take manual control',
+      '  window.__setMovePolicy(name) — hold | center | patrol | kite',
+      '  WASD / arrows             — manual movement (overrides policy)',
       '  window.__newRun(seed?)    — restart with optional seed',
       '  window.__save()           — force-save active slot now',
       '  window.__store            — save store (list/get/remove/...)',

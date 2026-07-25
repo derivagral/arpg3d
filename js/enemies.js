@@ -16,6 +16,12 @@ class Enemy {
         this.lastAction = 0;
         this.actionCooldown = config.actionCooldown || 1000;
 
+        // Melee swing cadence. Enemies persist in contact and swing on this
+        // cooldown — they are never consumed by touching the player.
+        // Mirrors ENEMY_TEMPLATES.attackMs in sim/engine.js.
+        this.attackMs = config.attackMs || 2000;
+        this.lastHitTime = 0;
+
         // Elite properties (set by SpawnManager.promoteToElite)
         this.isElite = false;
         this.eliteDropBonus = false;

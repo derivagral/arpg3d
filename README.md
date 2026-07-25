@@ -17,9 +17,12 @@ npm run dev       # Vite dev server at localhost:5173
 sim/              Pure game logic — zero browser deps, Node-importable
   rng.js          Seeded RNG (mulberry32), functional state threading
   affixes.js      AFFIX_POOL (20 affixes), rollAffix, deriveStats
+  player.js       BASE_PLAYER + derivePlayerStats (single stat derivation)
   pity.js         Per-tag drought counters, quadratic boost
   damage.js       Flat -> increased -> more -> crit pipeline (PoE-standard)
-  gate.js         Gate generation (2-3 options), resolution
+  gold.js         Kill drop table, gate reroll costs
+  movement.js     Arena bounds, idle movement policies, manual override
+  gate.js         Gate generation (2-3 options), resolution, gold reroll
   engine.js       tick(state, deltaMs, input) -> newState
   autopilot.js    Naive scoring — intentionally beatable by manual play
   save.js         Save file codec: versioned snapshots, export codes
@@ -57,13 +60,23 @@ createState(seed)
       +------------- player hp <= 0 ----------------------------> [dead]
 ```
 
-**Combat**: enemies move toward player, auto-attack fires at nearest in range,
-damage goes through the full pipeline (flat + increased + more + crit).
+**Combat**: the player moves (manual input, or an idle movement policy) inside
+a bounded arena; enemies path toward them and swing on a cooldown once in
+contact, capped by a surround limit. Auto-attack fires at the nearest enemy in
+range and damage goes through the full pipeline (flat + increased + more + crit).
+Only player attacks kill.
 
-**Gate**: player (or autopilot) picks one of 2-3 affix offers. Pity weights
-boost under-represented tags — if you haven't seen crit in 5 gates, it gets 2x weight.
+**Gate**: player (or autopilot) picks one of 2-3 affix offers, and may spend
+gold to reroll the offers. Pity weights boost under-represented tags — if you
+haven't seen crit in 5 gates, it gets 2x weight.
 
-**Dead**: run is over. Same seed replays identically.
+**Dead**: run is over. Same seed *and the same input sequence* replay identically.
+
+**Movement** is a first-class sim concern, not a render detail: manual control
+is just an input that overrides the active idle policy (`hold` / `center` /
+`patrol` / `kite`), so ARPG controls and idle automation share one tick and one
+balance model. Which policy is running is the single largest lever on how deep
+a run goes. See `docs/sim/movement.md`.
 
 ## Saving
 
@@ -75,10 +88,11 @@ See `docs/save-system.md` for the format and versioning rules.
 
 ## Controls
 
-- **WASD / Arrow Keys** — move player
+- **WASD / Arrow Keys** — move player (overrides the idle movement policy while held)
 - **ESC / P** — pause
 - **I** — inventory
 - Auto-attacks nearest enemy within range
+- Release the movement keys and the active idle policy takes back over
 
 ## Dev console (localhost only)
 
@@ -86,7 +100,10 @@ See `docs/save-system.md` for the format and versioning rules.
 // Sim state (primary source of truth)
 window.__sim()                // live SimState snapshot
 window.__pickGate(0)          // manually resolve current gate (0, 1, or 2)
+window.__rerollGate()         // spend gold to reroll the current gate's offers
 window.__setAutopilot(false)  // disable autopilot for manual play
+window.__setMovePolicy('kite')// idle movement AI: hold | center | patrol | kite
+window.__movePolicies()       // list available movement policies
 window.__newRun(42)           // restart with specific seed
 window.__save()               // force-save the active slot
 window.__store                // save store (list/get/remove/exportCode/...)

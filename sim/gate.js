@@ -14,8 +14,8 @@
  */
 
 import { rollAffix, ALL_TAGS } from './affixes.js'
+import { derivePlayerStats } from './player.js'
 import { tickDroughts, resetDroughts } from './pity.js'
-import { nextInt } from './rng.js'
 import { rerollCost } from './gold.js'
 
 /**
@@ -136,8 +136,10 @@ export const resolveGate = (state, choiceIdx) => {
   const newAffixes = [...player.affixes, chosen.affix]
   const newPity = resetDroughts(pity, chosen.tags)
 
-  const maxHpGain = chosen.affix.delta.maxHp ?? 0
-  const maxHp = player.maxHp + maxHpGain
+  // maxHp comes from the shared derivation, never from accumulation — the
+  // new pool is whatever the full affix set implies (see sim/player.js).
+  const maxHp = derivePlayerStats(newAffixes).maxHp
+  const maxHpGain = maxHp - player.maxHp
   const hp = Math.min(maxHp, player.hp + maxHpGain + maxHp * GATE_HEAL_FRACTION)
 
   return {

@@ -35,7 +35,9 @@ generateGate(depth, rngState, pity, existingIds)
 resolveGate(state, choiceIdx)
   1. Validate choiceIdx
   2. Append chosen affix to player.affixes
-  3. maxHp deltas grow the live pool: player.maxHp AND player.hp by the delta
+  3. Recompute player.maxHp via derivePlayerStats(newAffixes) — the single
+     derivation, never accumulation (see docs/sim/engine.md "Stat ownership");
+     player.hp grows by the same gain so added maxHp is usable immediately
   4. Heal GATE_HEAL_FRACTION (30%) of maxHp — wave-clear recovery
   5. resetDroughts(pity, chosenTags)
   6. Transition phase → 'combat'

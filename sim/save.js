@@ -81,6 +81,9 @@ export const serializeSim = (state) => ({
   player: {
     hp: state.player.hp,
     maxHp: state.player.maxHp,
+    x: state.player.x,
+    z: state.player.z,
+    waypoint: state.player.waypoint,
     gold: state.player.gold,
     xp: state.player.xp,
     kills: { ...state.player.kills },
@@ -135,6 +138,10 @@ export const hydrateSim = (snap) => {
     player: {
       hp: snap.player.hp,
       maxHp: snap.player.maxHp,
+      // position is additive — pre-movement snapshots resume at the origin
+      x: snap.player.x ?? 0,
+      z: snap.player.z ?? 0,
+      waypoint: snap.player.waypoint ?? 0,
       gold: snap.player.gold,
       xp: snap.player.xp,
       kills: { ...(snap.player.kills ?? {}) },

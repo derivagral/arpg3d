@@ -169,32 +169,37 @@ class Game {
     updateEnemies(currentTime) {
         if (this.state.paused) return;
 
-        this.state.enemies = this.state.enemies.filter(enemy => {
-            // Update enemy (movement and actions)
+        // Enemies in contact persist and swing on their own cooldown; only
+        // player damage kills them. Death-on-contact used to consume the
+        // enemy AND pay out a full kill reward, which let ehp builds clear
+        // waves by standing still and inflated the economy.
+        // Mirrors the sim melee model (sim/engine.js).
+        const contact = [];
+        for (const enemy of this.state.enemies) {
             enemy.update(this, currentTime);
 
-            // Check collision with player
             const distToPlayer = BABYLON.Vector3.Distance(
                 enemy.mesh.position,
                 this.player.mesh.position
             );
+            if (distToPlayer < 1) contact.push({ enemy, distToPlayer });
+        }
 
-            if (distToPlayer < 1) {
-                this.player.lastDamageSource = {
-                    name: enemy.name || enemy.type || 'Enemy',
-                    damage: enemy.damage,
-                    type: 'contact'
-                };
-                this.player.takeDamage(enemy.damage);
-                this.ui.updateHealthBar();
+        // Surround limit: only the closest N enemies can attack at once,
+        // so incoming dps doesn't scale with the size of the pile.
+        contact.sort((a, b) => a.distToPlayer - b.distToPlayer);
+        for (const { enemy } of contact.slice(0, CONFIG.combat.engagementSlots)) {
+            if (currentTime - enemy.lastHitTime < enemy.attackMs) continue;
+            enemy.lastHitTime = currentTime;
 
-                this.handleEnemyDeath(enemy, enemy.mesh.position.clone());
-                enemy.destroy();
-                return false;
-            }
-
-            return true;
-        });
+            this.player.lastDamageSource = {
+                name: enemy.name || enemy.type || 'Enemy',
+                damage: enemy.damage,
+                type: 'contact'
+            };
+            this.player.takeDamage(enemy.damage);
+            this.ui.updateHealthBar();
+        }
     }
 
     updateProjectiles() {

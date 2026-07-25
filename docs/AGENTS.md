@@ -13,6 +13,8 @@ Each subsystem is designed so its context fits in a single focused session.
 | Adjusting pity feel              | docs/sim/pity.md                                 | sim/pity.js, sim/gate.js                  |
 | Gate generation / option count   | docs/sim/gate.md, docs/sim/affixes.md            | sim/gate.js, sim/affixes.js               |
 | Gold economy / drops / rerolls   | docs/sim/gold.md, docs/sim/gate.md               | sim/gold.js, sim/gate.js, sim/engine.js   |
+| Movement / idle AI / arena       | docs/sim/movement.md, docs/sim/engine.md         | sim/movement.js, sim/engine.js            |
+| Player base stats / stat derivation | docs/sim/engine.md, docs/sim/affixes.md       | sim/player.js, sim/affixes.js             |
 | Sim loop / phase transitions     | docs/sim/engine.md, docs/sim/overview.md         | sim/engine.js                             |
 | Autopilot tuning                 | docs/sim/overview.md                             | sim/autopilot.js                          |
 | Babylon.js render / visuals      | docs/render/overview.md, docs/render/babylon.md  | src/main.js, js/game.js                   |
@@ -29,3 +31,7 @@ Each subsystem is designed so its context fits in a single focused session.
 4. All sim functions are pure. Do not introduce side effects.
 5. Affix IDs are stable keys — never rename an existing one (breaks saved state).
 6. When adding a new subsystem, add its row here and write its own `docs/sim/[name].md`.
+7. `sim/` is the canonical balance source. `js/config.js` mirrors it for the
+   legacy render layer — when the two disagree, sim wins and config follows.
+8. Effective stats come only from `derivePlayerStats()` (`sim/player.js`).
+   Never accumulate a stat onto player state alongside it.

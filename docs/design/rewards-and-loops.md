@@ -34,8 +34,16 @@ build only has the top-left cell.
 
 ### Per-run scaling — exists, needs a ceiling counterweight
 Gate affixes scale linearly with depth (`scaleAffixDelta`, +19.7%/wave, no
-cap) while enemy difficulty caps at 3x. For the death→legacy loop below to
-work, enemy scaling must eventually outpace the player so runs end naturally.
+cap). **Enemy *stats* do not scale with depth at all** — only wave count
+(`5 + 3·depth`) and the type mix change. (An earlier draft of this doc said
+difficulty "caps at 3x"; that was the legacy render layer's time-based
+scaling, which the sim never had.)
+
+So the only thing that ends a run today is enemy count outpacing your
+clear speed, which lands around depth 4 standing still and depth 22+ kiting.
+That works — runs do end — but it means difficulty is one-dimensional. For
+the death→echoes loop to stay meaningful at depth 50+, enemy stats will need
+a depth term of their own; otherwise affix scaling eventually wins outright.
 Depth at death becomes the score that feeds meta currency.
 
 ### Per-run completable — equipment
@@ -59,10 +67,17 @@ The most architecture-friendly path, because the affix system is registry-shaped
 - **Affix-pool unlocks**: new affixes enter `AFFIX_POOL` only after an unlock
   ("kill 50 elites → unlocks `life_steal_2`"). The pool itself becomes the
   collection. Pure data: pool composition is part of `meta`.
-- **Autopilot upgrades**: unlock smarter heuristics (synergy awareness exists;
-  add pity-awareness, build-commitment, defensive-panic). Buying intelligence
-  for your idle worker is a proven idle-genre hook and it's just swapping the
-  scoring function.
+- **Movement-AI unlocks** (now the strongest version of this idea): the
+  movement policy ladder in `sim/movement.js` — `hold` → `center` → `patrol`
+  → `kite` — spans death at depth 4 vs depth 22+ on identical seeds. That
+  ~5x spread makes movement the single largest lever on run outcome, so
+  selling better idle movement is real progression, not a stat trickle.
+  `DEFAULT_POLICY` is deliberately `center` (not the best) to leave headroom.
+  Gate these on the profile/unlock system rather than changing the default.
+- **Autopilot upgrades**: unlock smarter *gate* heuristics (synergy awareness
+  exists; add pity-awareness, build-commitment, defensive-panic). Buying
+  intelligence for your idle worker is a proven idle-genre hook and it's just
+  swapping the scoring function.
 - **Zone/content unlocks**: `AreaManager` is a skeleton; zones unlock by
   meta milestones, each with its own enemy mix and marker pool.
 - **Achievement stats**: finite checklist (D3 altar style) granting one-time
@@ -83,7 +98,11 @@ Differentiate what they pay out:
   them.
 
 This makes "log in, do the boss content, leave the farm running" the natural
-session shape — the D3/PoE session inside an idle wrapper.
+session shape — the D3/PoE session inside an idle wrapper. Movement is what
+makes that split mechanically real rather than just a reward-table policy:
+manual control (`input.move`) outperforms every idle policy, so encounters
+worth doing by hand genuinely reward being at the keyboard, while farm modes
+run on a policy you chose and upgraded.
 
 ### Offline progress: simulate it for real
 Because `sim/` is pure and Node-importable, offline gains don't need to be
@@ -95,11 +114,14 @@ direct payoff of the architecture.
 
 ## Economy: sinks before sources
 
-Gold currently accumulates with zero sinks. Ordered by leverage:
+Gold is a first-class sim entity (`sim/gold.js`) with kill drops as its
+source. Ordered by leverage:
 
-1. **Gate manipulation** (cheapest win): pay gold to reroll a gate's offers, or
-   add a 4th option. Turns dead gold into a planning decision inside the
-   existing loop — pure `sim/gate.js` change.
+1. ~~**Gate manipulation**~~ — **shipped**. Gold rerolls the current gate's
+   offers at `(5 + 3·depth) · 2^rerolls`, excluding held and already-offered
+   affixes, without touching pity. Adding a 4th option is the natural
+   follow-on. The autopilot never rerolls, so gold judgement stays a
+   manual-play edge.
 2. **Deterministic crafting**: PoE-style currencies, but each one is a pure
    function on item state (`reroll affix tier`, `add affix from tag X`,
    `upgrade rarity`). No trade means crafting must be the gear endgame; pity
@@ -163,11 +185,19 @@ First three module candidates, matching the active/idle split:
 
 Ordered by leverage-per-effort and dependency:
 
-1. **Gold sink: gate reroll/skip** — one sim module touched, immediate
-   planning texture, validates gold as a currency.
+1. ~~**Gold sink: gate reroll/skip**~~ — **done**. Gold is a sim entity with
+   kill drops and a reroll sink.
+1b. ~~**Position & movement policies**~~ — **done**, and it turned out to be a
+   prerequisite rather than a nicety: with enemies persisting, a position-less
+   sim let incoming dps scale with wave size. Movement + a surround limit
+   (`ENGAGEMENT_SLOTS`) fixed that, and handed the meta layer its best unlock
+   track. Manual control is an input override, so ARPG encounters and idle
+   farming share one tick.
 2. **Profile state + echoes + small upgrade board** — save schema v2,
    separates run/profile state (every later system needs this split), first
-   death→reward loop. The game stops being session-amnesiac here.
+   death→reward loop. The game stops being session-amnesiac here. **This is
+   also where movement policies get gated** — today all four are freely
+   selectable via `input.movePolicy`, which is the unlock ladder given away.
 3. **Items + stash** — in-run drops into the stubbed slots, stash persists
    across runs, pre-run loadout. Items become the long-term chase.
 4. **Module registry refactor + boss-keys module** — composable pools, engine

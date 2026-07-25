@@ -17,37 +17,38 @@
  */
 
 import { createRNG, next, nextInt } from './rng.js'
-import { deriveStats, AFFIX_POOL } from './affixes.js'
+import { AFFIX_POOL } from './affixes.js'
+import { BASE_PLAYER, derivePlayerStats } from './player.js'
 import { createPity } from './pity.js'
 import { generateGate, resolveGate, rerollGate } from './gate.js'
 import { rollGoldDrop } from './gold.js'
 import { calcDamage, aggregateDamageModifiers } from './damage.js'
 import { autoPickGate } from './autopilot.js'
+import { resolveMove, clampToArena } from './movement.js'
 
-// ── Base player stats (before affixes) ──────────────────────────────────────
-export const BASE_PLAYER = {
-  damage: 20,
-  attackSpeed: 800,    // ms between attacks
-  attackRange: 8,
-  speed: 0.15,
-  critChance: 0,
-  critMult: 1.5,
-  maxHp: 100,
-  regen: 0,
-  lifeSteal: 0,
-  magnetRadius: 5,
-  xpMult: 1,
-}
+export { BASE_PLAYER }
+
+/**
+ * Max enemies that can occupy melee contact simultaneously (surround limit).
+ * Without this, incoming dps scales with wave size — every enemy converges on
+ * one point and swings at once. Overflow enemies crowd but cannot attack.
+ */
+export const ENGAGEMENT_SLOTS = 5
 
 // ── Enemy templates for the ledge zone ──────────────────────────────────────
 // damage/attackMs are melee swing values: in-range enemies persist and swing
-// on this cooldown (per-enemy). Tuned with BASE_PLAYER so autopilot runs die
-// around depth 5-6 (when tanks join); see docs/sim/engine.md balance model.
+// on this cooldown (per-enemy), subject to ENGAGEMENT_SLOTS.
+//
+// Speed is balanced against BASE_PLAYER.speed (0.15) so movement is a real
+// tradeoff rather than free immunity: 'fast' outruns the player and must be
+// killed, 'swarm' nearly matches and overwhelms by number, while 'basic' and
+// 'tank' are kiteable. If every enemy were slower than the player, any
+// movement policy would be unkillable in an open arena.
 export const ENEMY_TEMPLATES = {
-  basic:   { hp: 20, damage: 2, speed: 0.04, xp: 5,  attackMs: 2500 },
-  fast:    { hp: 10, damage: 1, speed: 0.08, xp: 4,  attackMs: 1200 },
-  tank:    { hp: 70, damage: 6, speed: 0.02, xp: 15, attackMs: 4000 },
-  swarm:   { hp: 6,  damage: 1, speed: 0.06, xp: 2,  attackMs: 1500 },
+  basic:   { hp: 20, damage: 3, speed: 0.06,  xp: 5,  attackMs: 2000 },
+  fast:    { hp: 10, damage: 2, speed: 0.17,  xp: 4,  attackMs: 1200 },
+  tank:    { hp: 70, damage: 8, speed: 0.035, xp: 15, attackMs: 3500 },
+  swarm:   { hp: 6,  damage: 1, speed: 0.13,  xp: 2,  attackMs: 1200 },
 }
 
 // Enemies per depth tier
@@ -78,7 +79,10 @@ const waveForDepth = (depth) => {
 /**
  * @typedef {Object} PlayerSim
  * @property {number} hp
- * @property {number} maxHp
+ * @property {number} maxHp   - cache of derivePlayerStats().maxHp, never accumulated directly
+ * @property {number} x
+ * @property {number} z
+ * @property {number} waypoint - patrol circuit index
  * @property {import('./affixes.js').Affix[]} affixes
  * @property {number} gold
  * @property {number} xp
@@ -124,6 +128,9 @@ export const createState = (seed) => {
     player: {
       hp: BASE_PLAYER.maxHp,
       maxHp: BASE_PLAYER.maxHp,
+      x: 0,
+      z: 0,
+      waypoint: 0,
       affixes: [],
       gold: 0,
       xp: 0,
@@ -138,7 +145,8 @@ export const createState = (seed) => {
   }
 }
 
-// Spawn a wave of enemies around origin, returns { list, rng, nextId }
+// Spawn a wave of enemies in a ring around the origin (waves start with the
+// player recentred). Returns { list, rng, nextId }.
 const spawnWave = (depth, rngState, startId) => {
   const { count, types } = waveForDepth(depth)
   const list = []
@@ -146,14 +154,11 @@ const spawnWave = (depth, rngState, startId) => {
   let nextId = startId
 
   for (let i = 0; i < count; i++) {
-    // Pick type
-    let typeRng
-    ;[typeRng, rng] = [rng, rng]  // reassign below
     const typeIdx = Math.floor(i / Math.max(1, Math.floor(count / types.length))) % types.length
     const type = types[typeIdx]
     const tmpl = ENEMY_TEMPLATES[type]
 
-    // Scatter around origin circle, radius 12-18
+    // Scatter around origin circle, radius 12-18 (inside ARENA_RADIUS)
     let angle, dist
     ;[angle, rng] = next(rng)
     ;[dist, rng] = next(rng)
@@ -208,10 +213,12 @@ export const tick = (state, deltaMs, input = {}) => {
 
     if (choice !== null) {
       s = resolveGate(s, choice)
-      // Spawn next wave
+      // Spawn next wave. The player is recentred so the spawn ring is always
+      // drawn around them — waves start as a clean engagement.
       const wave = spawnWave(s.depth, s.rng, s.nextId)
       s = {
         ...s,
+        player: { ...s.player, x: 0, z: 0 },
         enemies: wave.list,
         rng: wave.rng,
         nextId: wave.nextId,
@@ -227,20 +234,33 @@ export const tick = (state, deltaMs, input = {}) => {
   let enemies = s.enemies.map(e => ({ ...e }))
   const log = [...s.log]
 
-  // Derive effective stats from affixes
-  const stats = deriveStats(BASE_PLAYER, player.affixes)
+  // Derive effective stats from affixes. maxHp is a cache of the derived
+  // value — never accumulated onto player state (see sim/player.js).
+  const stats = derivePlayerStats(player.affixes)
+  player.maxHp = stats.maxHp
+  player.hp = Math.min(player.hp, player.maxHp)
 
   // HP regen
   if (stats.regen > 0) {
     player.hp = Math.min(player.maxHp, player.hp + stats.regen * (deltaMs / 1000))
   }
 
-  // Move enemies toward player origin (0, 0)
+  // Player movement: manual input if present, else the active idle policy
+  const [dirX, dirZ, waypoint] = resolveMove(player, enemies, input)
+  if (dirX !== 0 || dirZ !== 0) {
+    const step = stats.speed * (deltaMs / 16.67)  // units/frame at 60fps
+    const [px, pz] = clampToArena(player.x + dirX * step, player.z + dirZ * step)
+    player.x = px
+    player.z = pz
+  }
+  player.waypoint = waypoint
+
+  // Move enemies toward the player's current position
   enemies = enemies.map(e => {
-    const dx = -e.x
-    const dz = -e.z
+    const dx = player.x - e.x
+    const dz = player.z - e.z
     const dist = Math.sqrt(dx * dx + dz * dz)
-    if (dist < 0.5) return e  // already at player
+    if (dist < 0.5) return e  // already on the player
     const move = e.speed * (deltaMs / 16.67)  // speed is units/frame at 60fps
     return {
       ...e,
@@ -265,12 +285,21 @@ export const tick = (state, deltaMs, input = {}) => {
     return goldRng
   }
 
-  // Enemy melee (within range 1.0): enemies persist and swing on their own
-  // cooldown. Only player attacks kill — death-on-contact is gone (it let
+  // Enemy melee: enemies persist and swing on their own cooldown. Only the
+  // ENGAGEMENT_SLOTS closest can attack — a surround limit, without which
+  // incoming dps would scale with wave size. Overflow enemies crowd but
+  // cannot swing. Only player attacks kill; death-on-contact is gone (it let
   // ehp builds auto-clear waves; may return as a thorns-style player stat).
+  const distToPlayer = (e) => Math.hypot(e.x - player.x, e.z - player.z)
+  const engaged = new Set(
+    enemies
+      .filter(e => distToPlayer(e) < 1.0)
+      .sort((a, b) => distToPlayer(a) - distToPlayer(b))
+      .slice(0, ENGAGEMENT_SLOTS)
+      .map(e => e.id)
+  )
   enemies = enemies.map(e => {
-    const dist = Math.sqrt(e.x * e.x + e.z * e.z)
-    if (dist >= 1.0) return e
+    if (!engaged.has(e.id)) return e
     const swingTicks = Math.max(5, Math.round(e.attackMs / 16.67))
     if (s.tick - e.lastHitTick < swingTicks) return e
     player.hp -= e.damage
@@ -286,7 +315,7 @@ export const tick = (state, deltaMs, input = {}) => {
     let nearest = null
     let nearestDist = Infinity
     for (const e of enemies) {
-      const d = Math.sqrt(e.x * e.x + e.z * e.z)
+      const d = distToPlayer(e)
       if (d <= stats.attackRange && d < nearestDist) {
         nearest = e
         nearestDist = d
