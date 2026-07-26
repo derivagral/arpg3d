@@ -21,6 +21,16 @@
 
 import { createState, tick, isRunOver } from '../sim/engine.js'
 import { MOVE_POLICIES } from '../sim/movement.js'
+import {
+  awardRun,
+  summarizeRun,
+  runMetaFor,
+  purchaseUpgrade,
+  unlockedPolicies,
+  UPGRADES,
+  ACHIEVEMENTS,
+  upgradeCost,
+} from '../sim/profile.js'
 import { createSaveStore } from './storage/saveStore.js'
 import { showMainMenu } from './ui/mainMenu.js'
 
@@ -53,6 +63,12 @@ function startGame({ store, slotId, initialSim }) {
 
   // ── Sim state (primary source of truth) ───────────────────────────────────
   let simState = initialSim
+
+  // ── Character profile (persistent meta, survives death) ───────────────────
+  // Held in memory and written alongside the run on every persist. The sim
+  // never reads it directly — it only ever sees the runMeta snapshot taken
+  // when a run starts.
+  let profile = store.getProfile(slotId)
 
   // Pending input for next tick
   let pendingInput = {
@@ -90,7 +106,7 @@ function startGame({ store, slotId, initialSim }) {
   // and page hide. localStorage writes are a few KB — cheap at this cadence.
   const persist = () => {
     try {
-      store.update(slotId, simState)
+      store.update(slotId, simState, profile)
     } catch (e) {
       console.warn('[save] autosave failed:', e)
     }
@@ -123,12 +139,24 @@ function startGame({ store, slotId, initialSim }) {
       persist()
     }
 
-    // Auto-restart sim when run ends — no alert, no interruption to the
-    // playable legacy game. The slot keeps the new run from the next
-    // checkpoint on; inspect the completed run via window.__sim() before
-    // it resets (it's replaced on the next frame).
+    // Run ended: fold it into the character profile (echoes, record depth,
+    // lifetime stats, achievement unlocks), persist, then start a fresh run
+    // from a NEW meta snapshot so purchases and unlocks take effect.
     if (isRunOver(simState)) {
-      simState = createState(Date.now())
+      const { profile: earned, echoes, unlocked } = awardRun(profile, summarizeRun(simState))
+      profile = earned
+      persist()
+
+      console.log(
+        `[run] depth ${simState.depth} → +${echoes.total} echoes` +
+        (echoes.pb > 0 ? ` (${echoes.pb} from a new record)` : '') +
+        ` | ${profile.echoes} banked`
+      )
+      for (const a of unlocked) {
+        console.log(`[unlocked] ${a.name} — ${a.desc}${a.grants ? ` → ${a.grants}` : ''}`)
+      }
+
+      simState = createState(Date.now(), runMetaFor(profile))
     }
   })
 
@@ -145,9 +173,50 @@ function startGame({ store, slotId, initialSim }) {
     window.__setAutopilot = (on) => { pendingInput.autopilot = on }
     window.__setMovePolicy = (name) => {
       pendingInput.movePolicy = name
-      return Object.keys(MOVE_POLICIES)
+      const allowed = simState.runMeta?.policies ?? []
+      if (!allowed.includes(name)) {
+        console.warn(`[policy] '${name}' is not unlocked for this run — the sim will ignore it.`,
+          `Unlocked: ${allowed.join(', ')}`)
+      }
+      return allowed
     }
-    window.__movePolicies = () => Object.keys(MOVE_POLICIES)
+    window.__movePolicies = () => ({
+      all: Object.keys(MOVE_POLICIES),
+      unlocked: unlockedPolicies(profile),
+      activeThisRun: simState.runMeta?.policies ?? [],
+    })
+
+    // ── Meta progression ───────────────────────────────────────────────────
+    window.__profile = () => profile
+    window.__board = () => UPGRADES.map(u => {
+      const level = profile.upgrades[u.id] ?? 0
+      const cost = upgradeCost(u.id, level)
+      return {
+        id: u.id, name: u.name, desc: u.desc,
+        level, maxLevel: u.maxLevel,
+        cost: cost ?? 'MAXED',
+        affordable: cost !== null && profile.echoes >= cost,
+      }
+    })
+    window.__buy = (id) => {
+      const { profile: next, bought, cost } = purchaseUpgrade(profile, id)
+      if (!bought) {
+        console.warn(`[board] could not buy '${id}'`,
+          cost === null ? '(unknown or maxed)' : `(costs ${cost}, have ${profile.echoes})`)
+        return false
+      }
+      profile = next
+      persist()
+      console.log(`[board] bought ${id} → level ${profile.upgrades[id]} (-${cost} echoes, ${profile.echoes} left).`,
+        'Takes effect on the next run.')
+      return true
+    }
+    window.__achievements = () => ACHIEVEMENTS.map(a => ({
+      id: a.id, name: a.name, desc: a.desc,
+      grants: a.grants ?? '—',
+      earned: profile.achievements.includes(a.id),
+    }))
+    window.__endRun = () => { simState = { ...simState, phase: 'dead' } }
     window.__newRun      = (seed) => { simState = createState(seed ?? Date.now()) }
 
     // Persistence controls
@@ -185,6 +254,14 @@ function startGame({ store, slotId, initialSim }) {
       '  window.__setAutopilot(false) — take manual control',
       '  window.__setMovePolicy(name) — hold | center | patrol | kite',
       '  WASD / arrows             — manual movement (overrides policy)',
+      '',
+      'Meta (persists across deaths, per character slot):',
+      '  window.__profile()        — echoes, record depth, unlocks, lifetime',
+      '  window.__board()          — upgrade board with costs/affordability',
+      '  window.__buy(id)          — buy a level (applies to the NEXT run)',
+      '  window.__achievements()   — checklist; these grant movement policies',
+      '  window.__movePolicies()   — all vs unlocked vs active this run',
+      '  window.__endRun()         — end the run now and bank its echoes',
       '  window.__newRun(seed?)    — restart with optional seed',
       '  window.__save()           — force-save active slot now',
       '  window.__store            — save store (list/get/remove/...)',

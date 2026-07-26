@@ -14,6 +14,14 @@ import {
   resolveMove,
 } from './movement.js'
 import { createState, tick, ENGAGEMENT_SLOTS, BASE_PLAYER, ENEMY_TEMPLATES } from './engine.js'
+import { createProfile, runMetaFor } from './profile.js'
+
+// Runs are gated to the policies their character unlocked, so tests that
+// exercise patrol/kite must start from a profile that has them.
+const META_ALL = runMetaFor({
+  ...createProfile(),
+  unlocks: ['policy:patrol', 'policy:kite'],
+})
 
 const player = (over = {}) => ({ x: 0, z: 0, waypoint: 0, ...over })
 const isUnit = ([x, z]) => {
@@ -86,7 +94,7 @@ test('resolveMove falls back to the default policy for unknown names', () => {
 })
 
 test('policies keep the player inside the arena over a long run', () => {
-  let s = createState(5)
+  let s = createState(5, META_ALL)
   for (let i = 0; i < 5000 && s.phase !== 'dead'; i++) {
     s = tick(s, 16.67, { gateChoice: null, autopilot: true, movePolicy: 'patrol' })
     assert.ok(
@@ -115,7 +123,7 @@ test('engagement slots cap simultaneous attackers', () => {
 
 test('movement policy materially changes run outcome', () => {
   const runTo = (policy) => {
-    let s = createState(31337)
+    let s = createState(31337, META_ALL)
     for (let i = 0; i < 60000 && s.phase !== 'dead'; i++) {
       s = tick(s, 16.67, { gateChoice: null, autopilot: true, movePolicy: policy })
     }
@@ -126,7 +134,7 @@ test('movement policy materially changes run outcome', () => {
 
 test('player position survives a save round-trip', async () => {
   const { serializeSim, hydrateSim } = await import('./save.js')
-  let s = createState(77)
+  let s = createState(77, META_ALL)
   for (let i = 0; i < 600; i++) {
     s = tick(s, 16.67, { gateChoice: null, autopilot: true, movePolicy: 'patrol' })
   }
@@ -151,7 +159,7 @@ test('pre-movement snapshots hydrate at the origin', async () => {
 
 test('maxHp has a single source: derived stats, never accumulation', async () => {
   const { derivePlayerStats } = await import('./player.js')
-  let s = createState(123)
+  let s = createState(123, META_ALL)
   for (let i = 0; i < 40000 && s.phase !== 'dead'; i++) {
     s = tick(s, 16.67, { gateChoice: null, autopilot: true, movePolicy: 'kite' })
     if (s.phase === 'combat') {

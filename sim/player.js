@@ -13,6 +13,7 @@
  */
 
 import { deriveStats } from './affixes.js'
+import { applyUpgrades } from './profile.js'
 
 /** Base player stats before affixes. */
 export const BASE_PLAYER = {
@@ -40,3 +41,14 @@ export const BASE_PLAYER = {
  */
 export const derivePlayerStats = (affixes, base = BASE_PLAYER) =>
   deriveStats(base, affixes)
+
+/**
+ * The base stat block for a run, i.e. BASE_PLAYER plus the meta upgrades the
+ * run was STARTED with. Reads runMeta (an immutable snapshot), never live
+ * profile state — see the determinism rule in sim/profile.js.
+ *
+ * @param {{ upgrades?: Object<string, number> }} [runMeta]
+ * @returns {object} base stats for this run
+ */
+export const baseForRun = (runMeta) =>
+  applyUpgrades(BASE_PLAYER, runMeta?.upgrades)

@@ -53,13 +53,15 @@ Depth at death becomes the score that feeds meta currency.
 completable goals ("filled all slots with rare+") are the session-level
 satisfaction the gate loop alone can't give.
 
-### Persistent scaling — legacy currency (the idle anchor)
-On death, award **echoes** proportional to depth reached (superlinear past
-personal best, so pushing matters more than re-farming). Spend on a small
-upgrade board: +X base damage, +Y starting HP, etc., with hard diminishing
-returns. This is paragon/D3-altar territory — deliberately modest. Stored in a
-new **profile state** beside run state (save schema v2; migration framework in
-`sim/save.js` is ready and empty).
+### Persistent scaling — echo currency (the idle anchor) — SHIPPED
+On death, **echoes** are awarded: a triangular base in depth reached (so
+payout grows with the square of depth) plus a one-time bonus per level beyond
+your record. Spent on a small upgrade board, capped at roughly 2x lifetime —
+paragon/D3-altar territory, deliberately modest. Lives in per-character
+**profile state** on the save envelope (schema v2). See docs/sim/profile.md.
+
+A flat per-depth rate was tried first and failed: farming a comfortable depth
+paid the same trickle forever and the board never funded itself.
 
 ### Persistent completable — the real meta reward
 The most architecture-friendly path, because the affix system is registry-shaped:
@@ -69,11 +71,12 @@ The most architecture-friendly path, because the affix system is registry-shaped
   collection. Pure data: pool composition is part of `meta`.
 - **Movement-AI unlocks** (now the strongest version of this idea): the
   movement policy ladder in `sim/movement.js` — `hold` → `center` → `patrol`
-  → `kite` — spans death at depth 4 vs depth 22+ on identical seeds. That
-  ~5x spread makes movement the single largest lever on run outcome, so
-  selling better idle movement is real progression, not a stat trickle.
-  `DEFAULT_POLICY` is deliberately `center` (not the best) to leave headroom.
-  Gate these on the profile/unlock system rather than changing the default.
+  → `kite` — spans death at depth 4 vs depth 22+ on identical seeds, and
+  depth ~50 once the board is bought. That spread makes movement the single
+  largest lever on run outcome, so better idle movement is real progression,
+  not a stat trickle. Shipped as achievement unlocks (earned, not bought) —
+  `DEFAULT_POLICY` stays `center` and the engine clamps `input.movePolicy` to
+  what the run unlocked.
 - **Autopilot upgrades**: unlock smarter *gate* heuristics (synergy awareness
   exists; add pity-awareness, build-commitment, defensive-panic). Buying
   intelligence for your idle worker is a proven idle-genre hook and it's just
@@ -193,11 +196,14 @@ Ordered by leverage-per-effort and dependency:
    (`ENGAGEMENT_SLOTS`) fixed that, and handed the meta layer its best unlock
    track. Manual control is an input override, so ARPG encounters and idle
    farming share one tick.
-2. **Profile state + echoes + small upgrade board** — save schema v2,
-   separates run/profile state (every later system needs this split), first
-   death→reward loop. The game stops being session-amnesiac here. **This is
-   also where movement policies get gated** — today all four are freely
-   selectable via `input.movePolicy`, which is the unlock ladder given away.
+2. ~~**Profile state + echoes + small upgrade board**~~ — **done**. A slot is
+   now a character: schema v2 carries a persistent profile (echoes, upgrades,
+   unlocks) beside the run, and a run receives meta only as an immutable
+   `runMeta` snapshot so replays stay reproducible. Movement policies are
+   gated and earned via achievements. See docs/sim/profile.md.
+   **Known runway limit**: the board maxes around run 4 and echoes then
+   accumulate unspent — that is the designed handoff to steps 3 and 4, and
+   the reason to do them next rather than raise the 2x meta budget.
 3. **Items + stash** — in-run drops into the stubbed slots, stash persists
    across runs, pre-run loadout. Items become the long-term chase.
 4. **Module registry refactor + boss-keys module** — composable pools, engine

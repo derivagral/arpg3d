@@ -21,6 +21,7 @@ sim/              Pure game logic — zero browser deps, Node-importable
   pity.js         Per-tag drought counters, quadratic boost
   damage.js       Flat -> increased -> more -> crit pipeline (PoE-standard)
   gold.js         Kill drop table, gate reroll costs
+  profile.js      Per-character meta: echoes, upgrade board, achievement unlocks
   movement.js     Arena bounds, idle movement policies, manual override
   gate.js         Gate generation (2-3 options), resolution, gold reroll
   engine.js       tick(state, deltaMs, input) -> newState
@@ -70,7 +71,16 @@ Only player attacks kill.
 gold to reroll the offers. Pity weights boost under-represented tags — if you
 haven't seen crit in 5 gates, it gets 2x weight.
 
-**Dead**: run is over. Same seed *and the same input sequence* replay identically.
+**Dead**: the run ends and folds into the character profile — echoes by depth
+reached, a bonus for beating your record, plus any achievements earned. Then a
+fresh run starts from a new meta snapshot. Same seed *and the same input
+sequence* replay identically.
+
+**Meta**: a save slot is a **character**, not a run. Its profile (echoes, an
+upgrade board, achievement unlocks) survives death; runs are attempts inside
+it. Meta enters a run only as an immutable snapshot taken at run start, so
+buying an upgrade can never rewrite a replay. Movement policies are *earned*
+through achievements rather than bought. See `docs/sim/profile.md`.
 
 **Movement** is a first-class sim concern, not a render detail: manual control
 is just an input that overrides the active idle policy (`hold` / `center` /
@@ -82,7 +92,7 @@ a run goes. See `docs/sim/movement.md`.
 
 The page boots into a save slot menu (pre-Babylon, plain DOM). Runs live in
 `localStorage` and autosave on wave clear, death, and tab close. Slots can be
-exported as JSON or a portable `arpg3d.v1.<base64url>` code and re-imported
+exported as JSON or a portable `arpg3d.v2.<base64url>` code and re-imported
 anywhere — saves carry a schema version and are validated/migrated on load.
 See `docs/save-system.md` for the format and versioning rules.
 
@@ -103,7 +113,12 @@ window.__pickGate(0)          // manually resolve current gate (0, 1, or 2)
 window.__rerollGate()         // spend gold to reroll the current gate's offers
 window.__setAutopilot(false)  // disable autopilot for manual play
 window.__setMovePolicy('kite')// idle movement AI: hold | center | patrol | kite
-window.__movePolicies()       // list available movement policies
+window.__movePolicies()       // all vs unlocked vs active-this-run
+window.__profile()            // character meta: echoes, record depth, unlocks
+window.__board()              // upgrade board with costs and affordability
+window.__buy('vitality')      // spend echoes (applies to the NEXT run)
+window.__achievements()       // checklist; these grant movement policies
+window.__endRun()             // end the run now and bank its echoes
 window.__newRun(42)           // restart with specific seed
 window.__save()               // force-save the active slot
 window.__store                // save store (list/get/remove/exportCode/...)
@@ -152,7 +167,7 @@ late game biases defense. Designed to be naive — manual play should outperform
 - **Tests**: `npm test` runs `node --test sim/**/*.test.js` — pure functions, no browser
 - **MD agent states**: `docs/AGENTS.md` scopes context per task (load only what's relevant)
 - **New zones**: duplicate `waveForDepth`, add zone field to SimState
-- **Meta layer**: currency, atlas, crafting built on sim/affixes.js
+- **Meta layer**: items/stash, atlas, crafting built on sim/affixes.js (echoes and the upgrade board are in — see docs/sim/profile.md)
 
 ## License
 

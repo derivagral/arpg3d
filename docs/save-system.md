@@ -26,19 +26,27 @@ src/main.js              WIRING
   slot is chosen; autosaves on wave clear, death, and pagehide
 ```
 
-## Save file format (schema v1)
+## Save file format (schema v2)
 
 ```jsonc
 {
   "game": "arpg3d",          // magic — rejects foreign JSON on import
-  "v": 1,                    // SAVE_SCHEMA_VERSION at write time
+  "v": 2,                    // SAVE_SCHEMA_VERSION at write time
   "id": "sv_x7k2...",        // slot id (regenerated on import, never clobbers)
   "name": "Run 6/11 1:17 PM",
   "createdAt": 1780000000000,
   "updatedAt": 1780000012345,
   "meta": {                  // denormalized for the slot list — no hydration needed
     "depth": 2, "phase": "combat", "hp": 100, "maxHp": 100,
-    "gold": 0, "xp": 12, "affixCount": 1, "elapsed": 12876
+    "gold": 0, "xp": 12, "affixCount": 1, "elapsed": 12876,
+    "echoes": 140, "bestDepth": 9, "runs": 4
+  },
+  "profile": {               // persistent character meta — survives death
+    "v": 1, "echoes": 140, "spent": 60, "bestDepth": 9, "runs": 4,
+    "lifetime": { "kills": { "basic": 210 }, "gold": 900, "depth": 31, "elapsed": 402000 },
+    "upgrades": { "vitality": 2 },
+    "unlocks": ["policy:patrol"],
+    "achievements": ["depth_4"]
   },
   "sim": {                   // full SimState snapshot, minus the log
     "seed": 4242, "rng": 123456789, "tick": 82, "elapsed": 12876,
@@ -68,12 +76,20 @@ Design decisions:
   starts a fresh log with a `run_resumed` entry.
 - **Dead runs restart.** `tick()` is a no-op in phase `dead`, so Play on a dead
   slot starts a fresh run (new seed) in the same slot. The menu labels these.
+  The restart takes a **new `runMeta` snapshot**, so upgrades bought since the
+  last run apply.
+- **A slot is a character.** The envelope carries a persistent `profile`
+  (echoes, upgrades, unlocks) alongside the current run, and the run snapshot
+  carries the `runMeta` it started with. Deleting a slot deletes its meta.
+  See docs/sim/profile.md.
 
 ## Versioning & migration
 
 - `SAVE_SCHEMA_VERSION` in `sim/save.js` — bump on breaking format changes.
 - `MIGRATIONS` maps version N → a function upgrading a save to N+1;
   `checkCompatibility` runs the chain automatically.
+- **v1 → v2** (slots became characters): a v1 save gains a fresh profile and a
+  base-policy `runMeta`, loading as a brand-new character mid-run.
 - Saves with a **newer** version (from a newer build) are rejected with a
   reason; saves with an **older** version and no migration path likewise.
   The menu lists incompatible slots grayed out — still exportable/deletable,
@@ -107,7 +123,8 @@ the current wave's progress.
 
 ```js
 window.__save()    // force-save the active slot, returns the stored file
-window.__store     // the save store (list/get/remove/exportCode/...)
+window.__store     // the save store (list/get/remove/getProfile/...)
+window.__profile() // the active slot's character profile
 ```
 
 ## Testing

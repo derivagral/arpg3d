@@ -18,7 +18,8 @@
 
 import { createRNG, next, nextInt } from './rng.js'
 import { AFFIX_POOL } from './affixes.js'
-import { BASE_PLAYER, derivePlayerStats } from './player.js'
+import { BASE_PLAYER, derivePlayerStats, baseForRun } from './player.js'
+import { runMetaFor, createProfile } from './profile.js'
 import { createPity } from './pity.js'
 import { generateGate, resolveGate, rerollGate } from './gate.js'
 import { rollGoldDrop } from './gold.js'
@@ -99,6 +100,7 @@ const waveForDepth = (depth) => {
  * @property {string}   phase        - 'combat' | 'gate' | 'dead'
  * @property {number}   depth        - gates completed
  * @property {number}   nextId       - next enemy id (threaded through state for determinism)
+ * @property {object}   runMeta      - immutable meta snapshot: { upgrades, policies }
  * @property {PlayerSim} player
  * @property {EnemyData[]} enemies
  * @property {import('./gate.js').Gate|null} gate
@@ -108,13 +110,21 @@ const waveForDepth = (depth) => {
 
 /**
  * Create a fresh run state from a seed.
+ *
+ * `runMeta` is an immutable snapshot of the character's meta progression at
+ * the moment the run starts (see sim/profile.js). Passing a live profile is
+ * a bug: a run must never observe meta changes made while it ticks, or
+ * replays and offline simulation stop being reproducible.
+ *
  * @param {number} seed
+ * @param {{ upgrades?: object, policies?: string[] }} [runMeta]
  * @returns {SimState}
  */
-export const createState = (seed) => {
+export const createState = (seed, runMeta = runMetaFor(createProfile())) => {
   const rng = createRNG(seed)
   const pity = createPity()
   const enemies = spawnWave(1, rng, 1)
+  const base = baseForRun(runMeta)
 
   return {
     seed,
@@ -124,10 +134,11 @@ export const createState = (seed) => {
     phase: 'combat',
     depth: 1,
     nextId: enemies.nextId,
+    runMeta,
 
     player: {
-      hp: BASE_PLAYER.maxHp,
-      maxHp: BASE_PLAYER.maxHp,
+      hp: base.maxHp,
+      maxHp: base.maxHp,
       x: 0,
       z: 0,
       waypoint: 0,
@@ -234,9 +245,10 @@ export const tick = (state, deltaMs, input = {}) => {
   let enemies = s.enemies.map(e => ({ ...e }))
   const log = [...s.log]
 
-  // Derive effective stats from affixes. maxHp is a cache of the derived
-  // value — never accumulated onto player state (see sim/player.js).
-  const stats = derivePlayerStats(player.affixes)
+  // Derive effective stats from the run's base (BASE_PLAYER + meta upgrades)
+  // plus affixes. maxHp is a cache of the derived value — never accumulated
+  // onto player state (see sim/player.js).
+  const stats = derivePlayerStats(player.affixes, baseForRun(s.runMeta))
   player.maxHp = stats.maxHp
   player.hp = Math.min(player.hp, player.maxHp)
 
@@ -245,8 +257,14 @@ export const tick = (state, deltaMs, input = {}) => {
     player.hp = Math.min(player.maxHp, player.hp + stats.regen * (deltaMs / 1000))
   }
 
-  // Player movement: manual input if present, else the active idle policy
-  const [dirX, dirZ, waypoint] = resolveMove(player, enemies, input)
+  // Player movement: manual input if present, else the active idle policy.
+  // The policy is clamped to what this run unlocked — the sim never trusts
+  // input.movePolicy to be legitimate.
+  const allowed = s.runMeta?.policies
+  const moveInput = (input.movePolicy && allowed && !allowed.includes(input.movePolicy))
+    ? { ...input, movePolicy: undefined }
+    : input
+  const [dirX, dirZ, waypoint] = resolveMove(player, enemies, moveInput)
   if (dirX !== 0 || dirZ !== 0) {
     const step = stats.speed * (deltaMs / 16.67)  // units/frame at 60fps
     const [px, pz] = clampToArena(player.x + dirX * step, player.z + dirZ * step)

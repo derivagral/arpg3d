@@ -29,9 +29,14 @@
 
 import { AFFIX_POOL } from './affixes.js'
 import { ENEMY_TEMPLATES } from './engine.js'
+import { createProfile, hydrateProfile, runMetaFor } from './profile.js'
 
 export const GAME_ID = 'arpg3d'
-export const SAVE_SCHEMA_VERSION = 1
+
+// v2: a slot became a CHARACTER — the envelope carries a persistent profile
+// (echoes, upgrades, unlocks) alongside the current run, and the run snapshot
+// carries the runMeta it was started with.
+export const SAVE_SCHEMA_VERSION = 2
 
 // ── SimState ↔ snapshot ──────────────────────────────────────────────────────
 
@@ -78,6 +83,10 @@ export const serializeSim = (state) => ({
   phase: state.phase,
   depth: state.depth,
   nextId: state.nextId,
+  runMeta: {
+    upgrades: { ...(state.runMeta?.upgrades ?? {}) },
+    policies: [...(state.runMeta?.policies ?? [])],
+  },
   player: {
     hp: state.player.hp,
     maxHp: state.player.maxHp,
@@ -135,6 +144,11 @@ export const hydrateSim = (snap) => {
     depth: snap.depth,
     // older snapshots predate the threaded id counter — resume past live ids
     nextId: snap.nextId ?? Math.max(0, ...snap.enemies.map(e => e.id)) + 1,
+    // pre-meta snapshots resume as an unupgraded run with base policies only
+    runMeta: {
+      upgrades: { ...(snap.runMeta?.upgrades ?? {}) },
+      policies: [...(snap.runMeta?.policies ?? runMetaFor(createProfile()).policies)],
+    },
     player: {
       hp: snap.player.hp,
       maxHp: snap.player.maxHp,
@@ -167,8 +181,12 @@ export const hydrateSim = (snap) => {
 
 // ── Save file envelope ───────────────────────────────────────────────────────
 
-/** Denormalized summary used by slot-list UIs without hydrating the sim. */
-export const buildMeta = (state) => ({
+/**
+ * Denormalized summary used by slot-list UIs without hydrating the sim.
+ * `profile` is optional so the character's standing (echoes, record depth)
+ * can show on the slot list too.
+ */
+export const buildMeta = (state, profile = null) => ({
   depth: state.depth,
   phase: state.phase,
   hp: Math.round(state.player.hp),
@@ -177,6 +195,9 @@ export const buildMeta = (state) => ({
   xp: state.player.xp,
   affixCount: state.player.affixes.length,
   elapsed: Math.round(state.elapsed),
+  echoes: profile?.echoes ?? 0,
+  bestDepth: profile?.bestDepth ?? 0,
+  runs: profile?.runs ?? 0,
 })
 
 export const newSaveId = () =>
@@ -191,6 +212,7 @@ export const newSaveId = () =>
  */
 export const createSaveFile = (state, opts = {}) => {
   const now = opts.now ?? Date.now()
+  const profile = hydrateProfile(opts.profile ?? createProfile())
   return {
     game: GAME_ID,
     v: SAVE_SCHEMA_VERSION,
@@ -198,19 +220,28 @@ export const createSaveFile = (state, opts = {}) => {
     name: opts.name ?? 'Unnamed Run',
     createdAt: opts.createdAt ?? now,
     updatedAt: now,
-    meta: buildMeta(state),
+    meta: buildMeta(state, profile),
+    profile,
     sim: serializeSim(state),
   }
 }
 
-/** Refresh an existing save file with a newer SimState (preserves identity). */
-export const updateSaveFile = (file, state, now = Date.now()) => ({
-  ...file,
-  v: SAVE_SCHEMA_VERSION,
-  updatedAt: now,
-  meta: buildMeta(state),
-  sim: serializeSim(state),
-})
+/**
+ * Refresh an existing save file with a newer SimState (preserves identity).
+ * Pass `profile` to persist meta changes (echoes awarded, upgrades bought);
+ * omitted, the file keeps the profile it already had.
+ */
+export const updateSaveFile = (file, state, now = Date.now(), profile = null) => {
+  const nextProfile = hydrateProfile(profile ?? file.profile ?? createProfile())
+  return {
+    ...file,
+    v: SAVE_SCHEMA_VERSION,
+    updatedAt: now,
+    meta: buildMeta(state, nextProfile),
+    profile: nextProfile,
+    sim: serializeSim(state),
+  }
+}
 
 // ── Validation & compatibility ───────────────────────────────────────────────
 
@@ -247,9 +278,20 @@ export const validateSaveFile = (obj) => {
 /**
  * Step migrations, keyed by the version they upgrade FROM.
  * Each entry: (saveFile) => saveFile with v incremented by 1.
- * Empty until the schema first changes.
  */
-export const MIGRATIONS = {}
+export const MIGRATIONS = {
+  // v1 → v2: slots became characters. A v1 slot has no profile and its run
+  // has no runMeta; both get fresh defaults, so an old save loads as a
+  // brand-new character mid-run with nothing unlocked and nothing lost.
+  1: (file) => ({
+    ...file,
+    v: 2,
+    profile: createProfile(),
+    sim: file.sim
+      ? { ...file.sim, runMeta: runMetaFor(createProfile()) }
+      : file.sim,
+  }),
+}
 
 /**
  * Upgrade a save file to the current schema version, one step at a time.

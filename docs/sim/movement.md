@@ -59,6 +59,9 @@ Measured spread (autopilot gate picks, 7 seeds, death depth):
 
 That ~5x gap is the point: movement is the single largest lever on run
 outcome, which is what makes an unlockable movement ladder worth having.
+(Figures are with no meta upgrades; a bought-out board pushes kite to ~50.)
+Policies are earned through achievements — see docs/sim/profile.md — and the
+engine clamps `input.movePolicy` to what the run actually unlocked.
 
 ## Balance premise: speed is a tradeoff, not immunity
 Enemy speeds are balanced against `BASE_PLAYER.speed` (0.15):

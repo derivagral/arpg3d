@@ -14,6 +14,7 @@ Each subsystem is designed so its context fits in a single focused session.
 | Gate generation / option count   | docs/sim/gate.md, docs/sim/affixes.md            | sim/gate.js, sim/affixes.js               |
 | Gold economy / drops / rerolls   | docs/sim/gold.md, docs/sim/gate.md               | sim/gold.js, sim/gate.js, sim/engine.js   |
 | Movement / idle AI / arena       | docs/sim/movement.md, docs/sim/engine.md         | sim/movement.js, sim/engine.js            |
+| Meta progression / echoes / unlocks | docs/sim/profile.md, docs/save-system.md      | sim/profile.js, sim/save.js, src/main.js  |
 | Player base stats / stat derivation | docs/sim/engine.md, docs/sim/affixes.md       | sim/player.js, sim/affixes.js             |
 | Sim loop / phase transitions     | docs/sim/engine.md, docs/sim/overview.md         | sim/engine.js                             |
 | Autopilot tuning                 | docs/sim/overview.md                             | sim/autopilot.js                          |
@@ -35,3 +36,5 @@ Each subsystem is designed so its context fits in a single focused session.
    legacy render layer — when the two disagree, sim wins and config follows.
 8. Effective stats come only from `derivePlayerStats()` (`sim/player.js`).
    Never accumulate a stat onto player state alongside it.
+9. A run never reads live profile state. Meta enters a run once, as the
+   `runMeta` snapshot taken at `createState()` — see docs/sim/profile.md.

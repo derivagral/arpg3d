@@ -17,6 +17,7 @@
 
 import { createState } from '../../sim/engine.js'
 import { hydrateSim, checkCompatibility, parseImportText } from '../../sim/save.js'
+import { runMetaFor, hydrateProfile } from '../../sim/profile.js'
 
 /**
  * @param {{ store: ReturnType<import('../storage/saveStore.js').createSaveStore>,
@@ -52,7 +53,11 @@ export const showMainMenu = ({ store, onStart }) => {
     if (warnings.length) console.warn('[save] hydration warnings:', warnings)
 
     // A dead run can't be resumed (tick() no-ops) — restart the slot fresh.
-    const sim = state.phase === 'dead' ? createState(Date.now()) : state
+    // The restart takes a new meta snapshot so upgrades bought since the
+    // last run actually apply.
+    const sim = state.phase === 'dead'
+      ? createState(Date.now(), runMetaFor(hydrateProfile(usable.profile)))
+      : state
     start(id, sim)
   }
 
