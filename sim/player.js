@@ -14,6 +14,7 @@
 
 import { deriveStats } from './affixes.js'
 import { applyUpgrades } from './profile.js'
+import { equippedAffixes } from './inventory.js'
 
 /** Base player stats before affixes. */
 export const BASE_PLAYER = {
@@ -52,3 +53,21 @@ export const derivePlayerStats = (affixes, base = BASE_PLAYER) =>
  */
 export const baseForRun = (runMeta) =>
   applyUpgrades(BASE_PLAYER, runMeta?.upgrades)
+
+/**
+ * Every affix affecting the player: equipped gear (from the runMeta snapshot)
+ * plus affixes picked at gates this run. Gear first so item mods read before
+ * run mods in any UI that lists them.
+ *
+ * This is the ONE place the two sources are combined — see the stat-ownership
+ * rule in docs/sim/engine.md.
+ *
+ * @param {object} runMeta
+ * @param {import('./affixes.js').Affix[]} runAffixes
+ */
+export const allAffixes = (runMeta, runAffixes = []) =>
+  [...equippedAffixes(runMeta?.equipment), ...runAffixes]
+
+/** Effective stats for a run: base + upgrades, with gear and run affixes. */
+export const statsForRun = (runMeta, runAffixes = []) =>
+  derivePlayerStats(allAffixes(runMeta, runAffixes), baseForRun(runMeta))

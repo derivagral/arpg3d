@@ -18,11 +18,13 @@
 
 import { createRNG, next, nextInt } from './rng.js'
 import { AFFIX_POOL } from './affixes.js'
-import { BASE_PLAYER, derivePlayerStats, baseForRun } from './player.js'
+import { BASE_PLAYER, derivePlayerStats, baseForRun, statsForRun, allAffixes } from './player.js'
 import { runMetaFor, createProfile } from './profile.js'
 import { createPity } from './pity.js'
 import { generateGate, resolveGate, rerollGate } from './gate.js'
 import { rollGoldDrop } from './gold.js'
+import { rollItemDrop } from './items.js'
+import { createInventory, addItem } from './inventory.js'
 import { calcDamage, aggregateDamageModifiers } from './damage.js'
 import { autoPickGate } from './autopilot.js'
 import { resolveMove, clampToArena } from './movement.js'
@@ -124,7 +126,11 @@ export const createState = (seed, runMeta = runMetaFor(createProfile())) => {
   const rng = createRNG(seed)
   const pity = createPity()
   const enemies = spawnWave(1, rng, 1)
-  const base = baseForRun(runMeta)
+  // Starting hp must come from the SAME derivation the tick loop uses, or a
+  // geared run begins under-healed: baseForRun() applies meta upgrades but
+  // not equipment affixes, so gear-granted maxHp would be missed here and
+  // only appear on the first tick, leaving hp clamped below the new max.
+  const startStats = statsForRun(runMeta, [])
 
   return {
     seed,
@@ -134,11 +140,12 @@ export const createState = (seed, runMeta = runMetaFor(createProfile())) => {
     phase: 'combat',
     depth: 1,
     nextId: enemies.nextId,
+    nextUid: 1,
     runMeta,
 
     player: {
-      hp: base.maxHp,
-      maxHp: base.maxHp,
+      hp: startStats.maxHp,
+      maxHp: startStats.maxHp,
       x: 0,
       z: 0,
       waypoint: 0,
@@ -146,6 +153,7 @@ export const createState = (seed, runMeta = runMetaFor(createProfile())) => {
       gold: 0,
       xp: 0,
       kills: {},
+      inventory: createInventory(),
       lastAttackTick: 0,
     },
 
@@ -241,6 +249,7 @@ export const tick = (state, deltaMs, input = {}) => {
 
   // ── COMBAT PHASE ───────────────────────────────────────────────────────────
   let rng = s.rng
+  let nextUid = s.nextUid ?? 1
   let player = { ...s.player }
   let enemies = s.enemies.map(e => ({ ...e }))
   const log = [...s.log]
@@ -248,7 +257,7 @@ export const tick = (state, deltaMs, input = {}) => {
   // Derive effective stats from the run's base (BASE_PLAYER + meta upgrades)
   // plus affixes. maxHp is a cache of the derived value — never accumulated
   // onto player state (see sim/player.js).
-  const stats = derivePlayerStats(player.affixes, baseForRun(s.runMeta))
+  const stats = statsForRun(s.runMeta, player.affixes)
   player.maxHp = stats.maxHp
   player.hp = Math.min(player.hp, player.maxHp)
 
@@ -295,12 +304,29 @@ export const tick = (state, deltaMs, input = {}) => {
     if (stats.lifeSteal > 0) {
       player.hp = Math.min(player.maxHp, player.hp + stats.lifeSteal)
     }
-    const [gold, goldRng] = rollGoldDrop(enemy.type, rngState)
+    let nextRng = rngState
+    const [gold, goldRng] = rollGoldDrop(enemy.type, nextRng)
+    nextRng = goldRng
     if (gold > 0) {
       player.gold += gold
       log.push({ tick: s.tick, type: 'gold_drop', payload: { id: enemy.id, amount: gold } })
     }
-    return goldRng
+
+    // Item drop. ilvl tracks depth so deeper runs roll stronger affixes.
+    const [item, itemRng] = rollItemDrop(enemy.type, nextRng, { ilvl: s.depth, uid: nextUid })
+    nextRng = itemRng
+    if (item) {
+      nextUid++
+      const res = addItem(player.inventory, item)
+      if (res.added) {
+        player.inventory = res.container
+        log.push({ tick: s.tick, type: 'item_drop', payload: { uid: item.uid, kind: item.kind, rarity: item.rarity } })
+      } else {
+        // Full bag: the drop is lost, but say so rather than failing silently.
+        log.push({ tick: s.tick, type: 'item_lost', payload: { rarity: item.rarity, reason: 'inventory full' } })
+      }
+    }
+    return nextRng
   }
 
   // Enemy melee: enemies persist and swing on their own cooldown. Only the
@@ -343,7 +369,7 @@ export const tick = (state, deltaMs, input = {}) => {
     if (nearest) {
       const dmgParams = {
         base: stats.damage,
-        ...aggregateDamageModifiers(player.affixes),
+        ...aggregateDamageModifiers(allAffixes(s.runMeta, player.affixes)),
         rngState: rng
       }
       const [damage, nextRng, wasCrit] = calcDamage(dmgParams)
@@ -368,7 +394,7 @@ export const tick = (state, deltaMs, input = {}) => {
   if (player.hp <= 0) {
     player.hp = 0
     log.push({ tick: s.tick, type: 'player_dead', payload: { depth: s.depth, elapsed: s.elapsed } })
-    return { ...s, player, enemies, rng, log, phase: 'dead' }
+    return { ...s, player, enemies, rng, nextUid, log, phase: 'dead' }
   }
 
   // Wave cleared → open gate
@@ -381,6 +407,7 @@ export const tick = (state, deltaMs, input = {}) => {
       player,
       enemies: [],
       rng: nextRng,
+      nextUid,
       pity: newPity,
       log,
       phase: 'gate',
@@ -389,7 +416,7 @@ export const tick = (state, deltaMs, input = {}) => {
     }
   }
 
-  return { ...s, player, enemies, rng, log }
+  return { ...s, player, enemies, rng, nextUid, log }
 }
 
 /**

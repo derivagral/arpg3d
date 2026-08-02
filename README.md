@@ -22,6 +22,8 @@ sim/              Pure game logic — zero browser deps, Node-importable
   damage.js       Flat -> increased -> more -> crit pipeline (PoE-standard)
   gold.js         Kill drop table, gate reroll costs
   profile.js      Per-character meta: echoes, upgrade board, achievement unlocks
+  items.js        Seeded item generation: kinds, rarities, drop tables
+  inventory.js    Bounded containers (bag/stash), equipment, auto-equip
   movement.js     Arena bounds, idle movement policies, manual override
   gate.js         Gate generation (2-3 options), resolution, gold reroll
   engine.js       tick(state, deltaMs, input) -> newState
@@ -76,6 +78,12 @@ reached, a bonus for beating your record, plus any achievements earned. Then a
 fresh run starts from a new meta snapshot. Same seed *and the same input
 sequence* replay identically.
 
+**Items**: kills drop seeded items into a 48-slot run bag. When the run ends the
+haul moves into the character's 240-slot **stash**, which persists forever.
+Equipment lives on the profile and enters a run through the same immutable
+snapshot as the rest of meta, so gear can't change mid-run. See
+`docs/sim/items.md`.
+
 **Meta**: a save slot is a **character**, not a run. Its profile (echoes, an
 upgrade board, achievement unlocks) survives death; runs are attempts inside
 it. Meta enters a run only as an immutable snapshot taken at run start, so
@@ -101,6 +109,7 @@ See `docs/save-system.md` for the format and versioning rules.
 - **WASD / Arrow Keys** — move player (overrides the idle movement policy while held)
 - **ESC / P** — pause
 - **I** — inventory
+- **E** — open the stash (only while standing at it in Home Base)
 - Auto-attacks nearest enemy within range
 - Release the movement keys and the active idle policy takes back over
 
@@ -119,6 +128,11 @@ window.__board()              // upgrade board with costs and affordability
 window.__buy('vitality')      // spend echoes (applies to the NEXT run)
 window.__achievements()       // checklist; these grant movement policies
 window.__endRun()             // end the run now and bank its echoes
+window.__bag()                // items found this run
+window.__stash()              // stored items (persist across runs)
+window.__gear()               // equipped loadout + score
+window.__equip(0, 'weapon')   // equip stash item (applies to the NEXT run)
+window.__autoEquip()          // greedily equip the best of everything
 window.__newRun(42)           // restart with specific seed
 window.__save()               // force-save the active slot
 window.__store                // save store (list/get/remove/exportCode/...)

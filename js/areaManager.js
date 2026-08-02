@@ -23,9 +23,20 @@ class AreaManager {
                         position: new BABYLON.Vector3(0, 2, -10),
                         destination: 'mobArea',
                         color: new BABYLON.Color3(1.0, 0.3, 0.3), // Red portal
-                        glowColor: new BABYLON.Color3(1.0, 0.5, 0.5)
+                        glowColor: new BABYLON.Color3(1.0, 0.5, 0.5),
+                        label: 'Combat Zone',
+                        hint: 'Walk in to start a run'
                     }
-                ]
+                ],
+                // Placed opposite the combat portal (+z vs -z) so gear and
+                // "start a fight" are never adjacent by accident.
+                stash: {
+                    position: new BABYLON.Vector3(0, 0.75, 10),
+                    color: new BABYLON.Color3(0.25, 0.55, 1.0),      // blue, vs the red portal
+                    glowColor: new BABYLON.Color3(0.5, 0.8, 1.0),
+                    label: 'Stash',
+                    hint: 'Press E — store and equip gear'
+                }
             },
             mobArea: {
                 name: 'Combat Zone',
@@ -53,6 +64,7 @@ class AreaManager {
         };
 
         this.portals = [];
+        this.stash = null;
         this.areaTimer = null;
         this.areaTimerElapsed = 0;
         this.returnPortalSpawned = false;
@@ -85,8 +97,9 @@ class AreaManager {
         // Update scene for new area
         this.setupAreaScene(area);
 
-        // Spawn portals for this area
+        // Spawn portals and home-base fixtures for this area
         this.spawnPortals(area);
+        this.spawnStash(area);
 
         // Handle area-specific logic
         if (areaName === 'mobArea') {
@@ -251,6 +264,12 @@ class AreaManager {
         }
     }
 
+    spawnStash(area) {
+        if (this.stash) { this.stash.dispose(); this.stash = null; }
+        if (!area.stash) return;
+        this.stash = new Stash(this.game.scene, area.stash.position, area.stash);
+    }
+
     startMobAreaTimer() {
         this.areaTimerElapsed = 0;
         this.returnPortalSpawned = false;
@@ -329,8 +348,12 @@ class AreaManager {
         // Update portals
         this.portals.forEach(portal => portal.update(deltaTime));
 
+        // Update home-base stash
+        if (this.stash) this.stash.update(deltaTime);
+
         // Check portal interactions
         this.checkPortalInteractions();
+        this.checkStashInteraction();
 
         // Update mob area timer
         this.updateMobAreaTimer(deltaTime);
@@ -341,9 +364,10 @@ class AreaManager {
 
         this.portals.forEach(portal => {
             if (portal.checkPlayerInteraction(playerPos)) {
-                // Show interaction hint (you can enhance this with UI)
                 if (!portal.interactionHintShown) {
-                    console.log(`Near portal to ${portal.destination}`);
+                    const label = portal.config.label || portal.destination;
+                    const hint = portal.config.hint || 'Walk in to travel';
+                    this.game.ui.showInteractionPrompt(label, hint, '#ff8a8a');
                     portal.interactionHintShown = true;
                 }
 
@@ -352,10 +376,41 @@ class AreaManager {
                 if (distance < 1.5) {
                     this.transitionToArea(portal.destination);
                 }
-            } else {
+            } else if (portal.interactionHintShown) {
+                this.game.ui.hideInteractionPrompt();
                 portal.interactionHintShown = false;
             }
         });
+    }
+
+    /**
+     * Proximity prompt for the stash. Unlike a portal this never triggers on
+     * contact — walking past your storage should not open a menu — so it only
+     * advertises the key. Game.handleKeyDown routes the actual press.
+     */
+    checkStashInteraction() {
+        if (!this.stash) {
+            if (this.stashPromptShown) {
+                this.game.ui.hideInteractionPrompt();
+                this.stashPromptShown = false;
+            }
+            return;
+        }
+
+        const inRange = this.stash.checkPlayerInteraction(this.game.player.mesh.position);
+        if (inRange && !this.stashPromptShown) {
+            this.game.ui.showInteractionPrompt(this.stash.config.label, this.stash.config.hint,
+                '#7fb8ff');
+            this.stashPromptShown = true;
+        } else if (!inRange && this.stashPromptShown) {
+            this.game.ui.hideInteractionPrompt();
+            this.stashPromptShown = false;
+        }
+    }
+
+    /** True when the player is standing at the stash (used by the E key). */
+    isAtStash() {
+        return !!(this.stash && this.stash.playerInRange);
     }
 
     playTransitionEffect() {
@@ -426,6 +481,13 @@ class AreaManager {
         // Clear portals
         this.portals.forEach(portal => portal.dispose());
         this.portals = [];
+
+        // Clear home-base fixtures
+        if (this.stash) { this.stash.dispose(); this.stash = null; }
+        if (this.stashPromptShown && this.game.ui) {
+            this.game.ui.hideInteractionPrompt();
+            this.stashPromptShown = false;
+        }
     }
 
     getCurrentArea() {

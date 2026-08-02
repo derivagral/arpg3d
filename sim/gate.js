@@ -14,7 +14,7 @@
  */
 
 import { rollAffix, ALL_TAGS } from './affixes.js'
-import { derivePlayerStats, baseForRun } from './player.js'
+import { statsForRun } from './player.js'
 import { tickDroughts, resetDroughts } from './pity.js'
 import { rerollCost } from './gold.js'
 
@@ -138,7 +138,7 @@ export const resolveGate = (state, choiceIdx) => {
 
   // maxHp comes from the shared derivation, never from accumulation — the
   // new pool is whatever the full affix set implies (see sim/player.js).
-  const maxHp = derivePlayerStats(newAffixes, baseForRun(state.runMeta)).maxHp
+  const maxHp = statsForRun(state.runMeta, newAffixes).maxHp
   const maxHpGain = maxHp - player.maxHp
   const hp = Math.min(maxHp, player.hp + maxHpGain + maxHp * GATE_HEAL_FRACTION)
 

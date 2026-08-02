@@ -53,6 +53,16 @@ class Game {
                 return;
             }
 
+            // Open the stash on E, but only while standing at it. Requiring a
+            // key press (unlike portals, which trigger on contact) means you
+            // can walk past your storage without being pulled into a menu.
+            if (key === 'e') {
+                if (this.areaManager && this.areaManager.isAtStash() && !this.state.inventoryOpen) {
+                    this.openStash();
+                }
+                return;
+            }
+
             // Pause on ESC or P (but not if inventory is open)
             if (key === 'escape' || key === 'p') {
                 if (this.state.inventoryOpen) {
@@ -82,6 +92,18 @@ class Game {
         }
     }
 
+    /**
+     * Open the gear screen in stash mode. For now this reuses the inventory
+     * screen — the stash and inventory share one UI surface until the
+     * side-by-side transfer view lands. The distinction that matters right
+     * now is that the systems are separate, not that the screens are.
+     */
+    openStash() {
+        this.state.atStash = true;
+        this.toggleInventory();
+        if (this.ui.showInteractionPrompt) this.ui.hideInteractionPrompt();
+    }
+
     toggleInventory() {
         this.state.inventoryOpen = !this.state.inventoryOpen;
 
@@ -92,6 +114,7 @@ class Game {
         } else {
             // Close inventory and unpause the game
             this.state.paused = false;
+            this.state.atStash = false;
             this.ui.hideInventory();
         }
     }

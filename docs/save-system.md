@@ -46,7 +46,11 @@ src/main.js              WIRING
     "lifetime": { "kills": { "basic": 210 }, "gold": 900, "depth": 31, "elapsed": 402000 },
     "upgrades": { "vitality": 2 },
     "unlocks": ["policy:patrol"],
-    "achievements": ["depth_4"]
+    "achievements": ["depth_4"],
+    "stash": [ /* 240 slots of item|null — survives death */ ],
+    "equipment": { "weapon": { "uid": 12, "kind": "weapon", "rarity": "rare",
+                               "ilvl": 9, "affixes": [{ "id": "flat_dmg_2",
+                               "delta": { "flatDamage": 5 } }] }, "head": null }
   },
   "sim": {                   // full SimState snapshot, minus the log
     "seed": 4242, "rng": 123456789, "tick": 82, "elapsed": 12876,

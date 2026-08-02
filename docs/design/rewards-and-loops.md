@@ -46,12 +46,13 @@ the death→echoes loop to stay meaningful at depth 50+, enemy stats will need
 a depth term of their own; otherwise affix scaling eventually wins outright.
 Depth at death becomes the score that feeds meta currency.
 
-### Per-run completable — equipment
-`js/inventory.js` already stubs 10 slots and `slotPool` filtering works in
+### Per-run completable — equipment — SHIPPED
+All 10 slots are live in `sim/inventory.js`, and `slotPool` filtering works in
 `AFFIX_POOL`. Items dropped in-run give a second, *spatial* progression track
 (fill slots, upgrade pieces) alongside the gate's *temporal* track. Per-run
 completable goals ("filled all slots with rare+") are the session-level
-satisfaction the gate loop alone can't give.
+satisfaction the gate loop alone can't give — those goals are not written yet,
+but the containers and equipment they'd read are.
 
 ### Persistent scaling — echo currency (the idle anchor) — SHIPPED
 On death, **echoes** are awarded: a triangular base in depth reached (so
@@ -204,8 +205,13 @@ Ordered by leverage-per-effort and dependency:
    **Known runway limit**: the board maxes around run 4 and echoes then
    accumulate unspent — that is the designed handoff to steps 3 and 4, and
    the reason to do them next rather than raise the 2x meta budget.
-3. **Items + stash** — in-run drops into the stubbed slots, stash persists
-   across runs, pre-run loadout. Items become the long-term chase.
+3. ~~**Items + stash**~~ — **done** (systems; UX still thin). Seeded drops fill
+   a 48-slot run bag, the haul banks into a 240-slot per-character stash on
+   death, and equipment lives on the profile so it enters a run through the
+   same immutable snapshot as upgrades. Home base has a blue stash object
+   distinct from the red combat portal. Still to do: side-by-side stash
+   transfer UI, crafting, vendor, and porting legacy pickup rendering to sim
+   items. See docs/sim/items.md.
 4. **Module registry refactor + boss-keys module** — composable pools, engine
    hooks, first `sourcePool` content. Active play now has exclusive rewards.
 5. **Offline autopilot farming** — headless sim of a designated farm zone,

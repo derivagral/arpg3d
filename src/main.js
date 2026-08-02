@@ -22,6 +22,16 @@
 import { createState, tick, isRunOver } from '../sim/engine.js'
 import { MOVE_POLICIES } from '../sim/movement.js'
 import {
+  autoEquip as autoEquipItems,
+  equipFrom,
+  unequipTo,
+  sortContainer,
+  countItems,
+  loadoutScore,
+  transfer,
+} from '../sim/inventory.js'
+import { itemName, itemScore, SLOTS } from '../sim/items.js'
+import {
   awardRun,
   summarizeRun,
   runMetaFor,
@@ -143,7 +153,7 @@ function startGame({ store, slotId, initialSim }) {
     // lifetime stats, achievement unlocks), persist, then start a fresh run
     // from a NEW meta snapshot so purchases and unlocks take effect.
     if (isRunOver(simState)) {
-      const { profile: earned, echoes, unlocked } = awardRun(profile, summarizeRun(simState))
+      const { profile: earned, echoes, unlocked, stashed, overflow } = awardRun(profile, summarizeRun(simState))
       profile = earned
       persist()
 
@@ -154,6 +164,10 @@ function startGame({ store, slotId, initialSim }) {
       )
       for (const a of unlocked) {
         console.log(`[unlocked] ${a.name} — ${a.desc}${a.grants ? ` → ${a.grants}` : ''}`)
+      }
+      if (stashed.length) console.log(`[stash] +${stashed.length} items (${countItems(profile.stash)} stored)`)
+      if (overflow.length) {
+        console.warn(`[stash] FULL — ${overflow.length} item(s) could not be stored and were lost.`)
       }
 
       simState = createState(Date.now(), runMetaFor(profile))
@@ -217,6 +231,58 @@ function startGame({ store, slotId, initialSim }) {
       earned: profile.achievements.includes(a.id),
     }))
     window.__endRun = () => { simState = { ...simState, phase: 'dead' } }
+
+    // ── Items: run bag, stash, and loadout ─────────────────────────────────
+    const describe = (item, i) => item && ({
+      i, uid: item.uid, name: itemName(item), kind: item.kind,
+      rarity: item.rarity, ilvl: item.ilvl, score: itemScore(item),
+      affixes: item.affixes.map(a => a.id),
+    })
+    window.__bag = () => (simState.player.inventory ?? []).map(describe).filter(Boolean)
+    window.__stash = () => (profile.stash ?? []).map(describe).filter(Boolean)
+    window.__gear = () => ({
+      slots: Object.fromEntries(SLOTS.map(s => [s, profile.equipment[s] ? itemName(profile.equipment[s]) : '—'])),
+      score: loadoutScore(profile.equipment),
+      note: 'Changes apply to the NEXT run — gear is snapshotted at run start.',
+    })
+    window.__equip = (stashIndex, slot) => {
+      const res = equipFrom(profile.equipment, profile.stash, stashIndex, slot)
+      if (!res.equipped) { console.warn(`[gear] cannot equip: ${res.reason}`); return false }
+      profile = { ...profile, equipment: res.equipment, stash: res.container }
+      persist()
+      console.log(`[gear] equipped ${itemName(res.equipped)} → ${slot} (next run)`)
+      return true
+    }
+    window.__unequip = (slot) => {
+      const res = unequipTo(profile.equipment, profile.stash, slot)
+      if (!res.removed) { console.warn(`[gear] nothing to unequip at ${slot} (or stash full)`); return false }
+      profile = { ...profile, equipment: res.equipment, stash: res.container }
+      persist()
+      return true
+    }
+    window.__autoEquip = () => {
+      const res = autoEquipItems(profile.equipment, profile.stash)
+      profile = { ...profile, equipment: res.equipment, stash: res.container }
+      persist()
+      console.log(`[gear] auto-equipped ${res.changes.length} slot(s):`,
+        res.changes.map(c => `${c.slot}=${itemName(c.item)}`).join(', ') || '(nothing better)')
+      return window.__gear()
+    }
+    window.__sortStash = () => {
+      profile = { ...profile, stash: sortContainer(profile.stash) }
+      persist()
+      return window.__stash().length
+    }
+    // Move an item from the live run bag straight into the stash (normally
+    // this happens automatically when the run ends).
+    window.__stashItem = (bagIndex) => {
+      const res = transfer(simState.player.inventory, profile.stash, bagIndex)
+      if (!res.moved) { console.warn('[stash] nothing moved (empty slot or stash full)'); return false }
+      simState = { ...simState, player: { ...simState.player, inventory: res.from } }
+      profile = { ...profile, stash: res.to }
+      persist()
+      return true
+    }
     window.__newRun      = (seed) => { simState = createState(seed ?? Date.now()) }
 
     // Persistence controls
@@ -262,6 +328,16 @@ function startGame({ store, slotId, initialSim }) {
       '  window.__achievements()   — checklist; these grant movement policies',
       '  window.__movePolicies()   — all vs unlocked vs active this run',
       '  window.__endRun()         — end the run now and bank its echoes',
+      '',
+      'Items:',
+      '  window.__bag()            — items found in the current run',
+      '  window.__stash()          — stored items (persists across runs)',
+      '  window.__gear()           — equipped loadout + score',
+      '  window.__equip(i, slot)   — equip stash item i (applies NEXT run)',
+      '  window.__unequip(slot)    — return equipped gear to the stash',
+      '  window.__autoEquip()      — greedily equip the best of everything',
+      '  window.__sortStash()      — sort stash by item score',
+      '  E at the stash in Home Base — open the gear screen',
       '  window.__newRun(seed?)    — restart with optional seed',
       '  window.__save()           — force-save active slot now',
       '  window.__store            — save store (list/get/remove/...)',

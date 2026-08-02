@@ -1,5 +1,13 @@
 // Enhanced Game Configuration
 const CONFIG = {
+    // Container sizes. Mirrors INVENTORY_SIZE / STASH_SIZE in sim/inventory.js
+    // (canonical). Bigger than a classic 24-slot bag on purpose: sorting gear
+    // should be the interesting part, not fighting for space.
+    inventory: {
+        size: 48,
+        stashSize: 240
+    },
+
     // Combat rules shared with the sim. sim/ is the canonical balance source:
     // when these disagree, sim/engine.js wins and this file follows.
     combat: {

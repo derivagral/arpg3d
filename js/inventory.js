@@ -1,7 +1,11 @@
 // Inventory Manager - handles player inventory and equipment
 class InventoryManager {
     constructor() {
-        this.maxSlots = 24; // Matches the UI
+        // Size comes from CONFIG so the UI grid, the manager, and sim/inventory.js
+        // cannot drift apart. See CONFIG.inventory (mirrors sim INVENTORY_SIZE).
+        this.maxSlots = (typeof CONFIG !== 'undefined' && CONFIG.inventory)
+            ? CONFIG.inventory.size
+            : 48;
         this.items = new Array(this.maxSlots).fill(null);
 
         // Equipment slots - 10 total

@@ -19,6 +19,8 @@
  * functions take the base they modify as an argument.
  */
 
+import { createStash, createEquipment, hydrateContainer, hydrateEquipment, addItems, STASH_SIZE } from './inventory.js'
+
 export const PROFILE_VERSION = 1
 
 /** Movement policies available without any unlock. */
@@ -182,6 +184,8 @@ export const createProfile = () => ({
   upgrades: {},
   unlocks: [],
   achievements: [],
+  stash: createStash(),
+  equipment: createEquipment(),
 })
 
 /** Movement policies this profile may use. */
@@ -199,14 +203,20 @@ export const unlockedPolicies = (profile) => [
 export const runMetaFor = (profile) => ({
   upgrades: { ...(profile?.upgrades ?? {}) },
   policies: unlockedPolicies(profile),
+  // The loadout the run is locked into. Equipment lives on the profile and
+  // enters a run only here, so gear cannot change mid-run.
+  equipment: hydrateEquipment(profile?.equipment),
 })
 
-/** Condense a finished run into the numbers the profile cares about. */
+/** Condense a finished run into what the profile cares about. */
 export const summarizeRun = (state) => ({
   depth: state.depth,
   kills: { ...state.player.kills },
   gold: state.player.gold,
   elapsed: state.elapsed,
+  // Items found this run. They survive death — losing them would make the
+  // idle half punishing, and the stash is the whole point of the loop.
+  items: (state.player.inventory ?? []).filter(Boolean),
 })
 
 /**
@@ -225,8 +235,13 @@ export const awardRun = (profile, summary) => {
     kills[type] = (kills[type] ?? 0) + n
   }
 
+  // Run haul flows into the stash. Overflow is reported, never silently
+  // dropped, so a full stash is a visible problem rather than lost loot.
+  const haul = addItems(profile.stash ?? createStash(), summary.items ?? [])
+
   let next = {
     ...profile,
+    stash: haul.container,
     echoes: profile.echoes + echoes.total,
     bestDepth: Math.max(profile.bestDepth, summary.depth),
     runs: profile.runs + 1,
@@ -252,7 +267,7 @@ export const awardRun = (profile, summary) => {
     }
   }
 
-  return { profile: next, echoes, unlocked }
+  return { profile: next, echoes, unlocked, stashed: haul.added, overflow: haul.overflow }
 }
 
 /**
@@ -290,5 +305,7 @@ export const hydrateProfile = (raw) => {
     upgrades: { ...(raw.upgrades ?? {}) },
     unlocks: [...(raw.unlocks ?? [])],
     achievements: [...(raw.achievements ?? [])],
+    stash: hydrateContainer(raw.stash, STASH_SIZE),
+    equipment: hydrateEquipment(raw.equipment),
   }
 }

@@ -30,6 +30,7 @@
 import { AFFIX_POOL } from './affixes.js'
 import { ENEMY_TEMPLATES } from './engine.js'
 import { createProfile, hydrateProfile, runMetaFor } from './profile.js'
+import { hydrateContainer, hydrateEquipment, INVENTORY_SIZE, countItems } from './inventory.js'
 
 export const GAME_ID = 'arpg3d'
 
@@ -83,9 +84,11 @@ export const serializeSim = (state) => ({
   phase: state.phase,
   depth: state.depth,
   nextId: state.nextId,
+  nextUid: state.nextUid ?? 1,
   runMeta: {
     upgrades: { ...(state.runMeta?.upgrades ?? {}) },
     policies: [...(state.runMeta?.policies ?? [])],
+    equipment: hydrateEquipment(state.runMeta?.equipment),
   },
   player: {
     hp: state.player.hp,
@@ -96,6 +99,7 @@ export const serializeSim = (state) => ({
     gold: state.player.gold,
     xp: state.player.xp,
     kills: { ...state.player.kills },
+    inventory: [...(state.player.inventory ?? [])],
     lastAttackTick: state.player.lastAttackTick,
     affixes: state.player.affixes.map(serializeAffix),
   },
@@ -144,10 +148,12 @@ export const hydrateSim = (snap) => {
     depth: snap.depth,
     // older snapshots predate the threaded id counter — resume past live ids
     nextId: snap.nextId ?? Math.max(0, ...snap.enemies.map(e => e.id)) + 1,
+    nextUid: snap.nextUid ?? 1,
     // pre-meta snapshots resume as an unupgraded run with base policies only
     runMeta: {
       upgrades: { ...(snap.runMeta?.upgrades ?? {}) },
       policies: [...(snap.runMeta?.policies ?? runMetaFor(createProfile()).policies)],
+      equipment: hydrateEquipment(snap.runMeta?.equipment),
     },
     player: {
       hp: snap.player.hp,
@@ -159,6 +165,8 @@ export const hydrateSim = (snap) => {
       gold: snap.player.gold,
       xp: snap.player.xp,
       kills: { ...(snap.player.kills ?? {}) },
+      // pre-item snapshots resume with an empty bag
+      inventory: hydrateContainer(snap.player.inventory, INVENTORY_SIZE),
       lastAttackTick: snap.player.lastAttackTick,
       affixes,
     },
@@ -194,6 +202,7 @@ export const buildMeta = (state, profile = null) => ({
   gold: state.player.gold,
   xp: state.player.xp,
   affixCount: state.player.affixes.length,
+  items: countItems(state.player.inventory ?? []),
   elapsed: Math.round(state.elapsed),
   echoes: profile?.echoes ?? 0,
   bestDepth: profile?.bestDepth ?? 0,
