@@ -109,7 +109,7 @@ See `docs/save-system.md` for the format and versioning rules.
 - **WASD / Arrow Keys** — move player (overrides the idle movement policy while held)
 - **ESC / P** — pause
 - **I** — inventory
-- **E** — open the stash (only while standing at it in Home Base)
+- **E** — open the Bag/Stash/Equipment screen (at the stash in Home Base; ESC or E closes)
 - Auto-attacks nearest enemy within range
 - Release the movement keys and the active idle policy takes back over
 
@@ -133,6 +133,7 @@ window.__stash()              // stored items (persist across runs)
 window.__gear()               // equipped loadout + score
 window.__equip(0, 'weapon')   // equip stash item (applies to the NEXT run)
 window.__autoEquip()          // greedily equip the best of everything
+window.__openStash()          // open the stash screen from anywhere
 window.__newRun(42)           // restart with specific seed
 window.__save()               // force-save the active slot
 window.__store                // save store (list/get/remove/exportCode/...)

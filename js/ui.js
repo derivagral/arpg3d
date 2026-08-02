@@ -84,6 +84,35 @@ class UIManager {
         this.interactionPrompt.style.opacity = '1';
     }
 
+    /** Brief toast when a sim-owned drop is collected. The item is already in
+     *  the run bag — this is the feedback that it happened. */
+    flashLoot(item) {
+        if (!this.lootToast) {
+            const el = document.createElement('div');
+            el.id = 'lootToast';
+            el.style.cssText = [
+                'position:fixed', 'left:50%', 'bottom:180px', 'transform:translateX(-50%)',
+                'font-family:monospace', 'font-size:13px', 'pointer-events:none',
+                'z-index:118', 'text-shadow:0 2px 6px rgba(0,0,0,0.9)',
+                'transition:opacity 0.4s', 'opacity:0'
+            ].join(';');
+            document.body.appendChild(el);
+            this.lootToast = el;
+        }
+        const colors = {
+            common: '#b8b8b8', uncommon: '#4caf50', rare: '#3f8cff',
+            epic: '#a24cff', legendary: '#ffb300'
+        };
+        const label = item.rarity ? `${item.rarity} ${item.kind || 'item'}` : 'item';
+        this.lootToast.textContent = `+ ${label}`;
+        this.lootToast.style.color = colors[item.rarity] || '#dddddd';
+        this.lootToast.style.opacity = '1';
+        clearTimeout(this._lootToastTimer);
+        this._lootToastTimer = setTimeout(() => {
+            if (this.lootToast) this.lootToast.style.opacity = '0';
+        }, 1200);
+    }
+
     hideInteractionPrompt() {
         if (this.interactionPrompt) this.interactionPrompt.style.opacity = '0';
     }

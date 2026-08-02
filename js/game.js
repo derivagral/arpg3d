@@ -27,8 +27,14 @@ class Game {
             startTime: Date.now(),
             paused: false,
             upgradesPending: 0,
-            inventoryOpen: false
+            inventoryOpen: false,
+            atStash: false,
+            stashOpen: false
         };
+
+        // Item drops produced by the sim, waiting to be shown as world pickups.
+        // The sim is the only thing that rolls items — see handleEnemyDeath.
+        this.simDropQueue = [];
 
         // Shorthand for enemies (for compatibility)
         this.enemies = this.state.enemies;
@@ -63,6 +69,10 @@ class Game {
                 return;
             }
 
+            // The stash panel owns the screen while open and handles its own
+            // keys; don't let ESC/P unpause the game behind it.
+            if (this.state.stashOpen) return;
+
             // Pause on ESC or P (but not if inventory is open)
             if (key === 'escape' || key === 'p') {
                 if (this.state.inventoryOpen) {
@@ -93,15 +103,17 @@ class Game {
     }
 
     /**
-     * Open the gear screen in stash mode. For now this reuses the inventory
-     * screen — the stash and inventory share one UI surface until the
-     * side-by-side transfer view lands. The distinction that matters right
-     * now is that the systems are separate, not that the screens are.
+     * Open the Bag/Stash/Equipment screen. The panel itself is an ES module
+     * (src/ui/stashPanel.js) wired up in src/main.js, which installs
+     * openStashPanel() on this instance — it reads canonical sim/profile
+     * state, unlike the older legacy inventory screen on I.
      */
     openStash() {
+        if (!this.openStashPanel) return;
         this.state.atStash = true;
-        this.toggleInventory();
-        if (this.ui.showInteractionPrompt) this.ui.hideInteractionPrompt();
+        this.state.stashOpen = true;
+        if (this.ui.hideInteractionPrompt) this.ui.hideInteractionPrompt();
+        this.openStashPanel();
     }
 
     toggleInventory() {
@@ -150,11 +162,18 @@ class Game {
             this.pickupManager.createPickup(position, 'gold', goldAmount);
         }
 
-        // Item drop (scaled by item-find buffs)
-        const itemDropChance = (CONFIG.items.dropChances[enemy.type] || 0.05) * dropMult * itemFind;
-        if (Math.random() < itemDropChance) {
-            const item = ItemGenerator.generateItem({ wave: this.spawnManager.currentWave });
-            this.pickupManager.createPickup(position, 'item', item);
+        // Item drop — DISPLAY ONLY.
+        //
+        // The sim rolls every item (seeded, deterministic) and banks it into
+        // the run bag the moment it drops. This layer used to roll a second,
+        // parallel item with Math.random() and its own generator, so the loot
+        // you saw on the ground had nothing to do with the loot you owned.
+        // Now src/main.js drains the sim's item_drop events into simDropQueue
+        // and we simply show the next one at this corpse. Picking it up is a
+        // visual flourish; the item is already yours.
+        const simDrop = this.simDropQueue.shift();
+        if (simDrop) {
+            this.pickupManager.createPickup(position, 'item', simDrop);
         }
 
         // Special death effects
@@ -285,6 +304,14 @@ class Game {
             },
             // onItemCollected callback
             (item) => {
+                // Sim-owned drops are already in the run bag; collecting the
+                // mesh is purely cosmetic. Never re-add, or the item would
+                // exist twice.
+                if (item && item.fromSim) {
+                    if (this.ui.flashLoot) this.ui.flashLoot(item);
+                    return true;
+                }
+
                 const result = this.inventoryManager.addItem(item);
 
                 if (result === true) {

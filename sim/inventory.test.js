@@ -14,7 +14,7 @@ import {
   createInventory, createStash, createEquipment, createContainer,
   addItem, addItems, removeAt, transfer, compact, sortContainer,
   firstEmpty, isFull, countItems,
-  equipFrom, unequipTo, equippedAffixes, loadoutScore, autoEquip,
+  equipFrom, unequipTo, equippedAffixes, loadoutScore, autoEquip, bestSlotFor,
   hydrateContainer, hydrateEquipment,
 } from './inventory.js'
 import { createRNG } from './rng.js'
@@ -232,6 +232,27 @@ test('equippedAffixes flattens every worn item', () => {
   assert.equal(affixes.length, 2)
   assert.deepEqual(equippedAffixes(null), [])
   assert.ok(loadoutScore(eq) > 0)
+})
+
+test('bestSlotFor fills an empty slot before replacing a worn one', () => {
+  const ring = mkItem({ uid: 5, kind: 'ring', slot: 'ring' })
+  const eq = createEquipment()
+
+  assert.equal(bestSlotFor(ring, eq), 'ring1', 'first ring goes to the free finger')
+
+  eq.ring1 = mkItem({ uid: 6, kind: 'ring', slot: 'ring' })
+  assert.equal(bestSlotFor(ring, eq), 'ring2', 'second ring must not overwrite the first')
+
+  // Both fingers full → replace the weaker one
+  eq.ring1 = mkItem({ uid: 7, kind: 'ring', slot: 'ring',
+    affixes: [{ id: 'flat_dmg_2', delta: { flatDamage: 99 } }] })
+  eq.ring2 = mkItem({ uid: 8, kind: 'ring', slot: 'ring',
+    affixes: [{ id: 'flat_dmg_1', delta: { flatDamage: 1 } }] })
+  assert.equal(bestSlotFor(ring, eq), 'ring2', 'replaces the weakest ring')
+
+  assert.equal(bestSlotFor(null, eq), null)
+  assert.equal(bestSlotFor({ kind: 'junk', slot: 'junk', affixes: [] }, eq), null)
+  assert.equal(bestSlotFor(mkItem(), createEquipment()), 'weapon')
 })
 
 test('autoEquip takes upgrades and leaves worse items alone', () => {

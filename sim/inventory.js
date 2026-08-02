@@ -164,6 +164,24 @@ export const loadoutScore = (equipment) =>
   SLOTS.reduce((n, s) => n + itemScore(equipment?.[s]), 0)
 
 /**
+ * Which slot an item should go to when the player just clicks it.
+ * Prefers an empty compatible slot, else the weakest occupied one — so a
+ * second ring fills the free finger instead of overwriting the first, and
+ * an upgrade replaces your worst piece rather than an arbitrary one.
+ *
+ * @returns {string|null} slot id, or null if nothing accepts the item
+ */
+export const bestSlotFor = (item, equipment) => {
+  if (!item) return null
+  const fits = SLOTS.filter(s => slotAccepts(s, item))
+  if (fits.length === 0) return null
+  const empty = fits.find(s => !equipment?.[s])
+  if (empty) return empty
+  return fits.reduce((worst, s) =>
+    itemScore(equipment[s]) < itemScore(equipment[worst]) ? s : worst, fits[0])
+}
+
+/**
  * Greedy auto-equip: for each slot, equip the best-scoring compatible item in
  * the container if it beats what's worn. Used by the stash UI's one-click
  * "equip best" and as a sane default for idle players.

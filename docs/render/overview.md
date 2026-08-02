@@ -41,6 +41,11 @@ Behaviour that exists in both layers today, and must be changed in both:
 | Enemies persist in contact, swing on cooldown | `sim/engine.js` melee block | `js/game.js` `updateEnemies()` |
 | Surround limit | `ENGAGEMENT_SLOTS` | `CONFIG.combat.engagementSlots` |
 | Enemy/player balance stats | `ENEMY_TEMPLATES`, `BASE_PLAYER` | `CONFIG.enemies.types`, `CONFIG.player` |
+| Container sizes | `INVENTORY_SIZE`, `STASH_SIZE` | `CONFIG.inventory` |
+
+**Items are no longer mirrored** — the sim is the sole source. It rolls every
+drop and banks it; the render layer only *displays* drops drained from the
+sim's `item_drop` log events into `game.simDropQueue`. See docs/sim/items.md.
 
 `sim/` is canonical: when they disagree, sim wins and the legacy config follows.
 

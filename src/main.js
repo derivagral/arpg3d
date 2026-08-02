@@ -30,7 +30,7 @@ import {
   loadoutScore,
   transfer,
 } from '../sim/inventory.js'
-import { itemName, itemScore, SLOTS } from '../sim/items.js'
+import { itemName, itemScore, rarityInfo, SLOTS } from '../sim/items.js'
 import {
   awardRun,
   summarizeRun,
@@ -43,6 +43,7 @@ import {
 } from '../sim/profile.js'
 import { createSaveStore } from './storage/saveStore.js'
 import { showMainMenu } from './ui/mainMenu.js'
+import { createStashPanel } from './ui/stashPanel.js'
 
 window.addEventListener('DOMContentLoaded', () => {
   // The menu is deliberately pre-Babylon: it must work even if the CDN
@@ -54,6 +55,19 @@ window.addEventListener('DOMContentLoaded', () => {
     onStart: ({ slotId, simState }) => startGame({ store, slotId, initialSim: simState }),
   })
 })
+
+// Babylon colours for a dropped item's mesh, keyed by rarity. Kept here
+// rather than in sim/ so the sim stays free of render concerns.
+function rarityMesh(rarity) {
+  const hex = rarityInfo(rarity).color
+  const r = parseInt(hex.slice(1, 3), 16) / 255
+  const g = parseInt(hex.slice(3, 5), 16) / 255
+  const b = parseInt(hex.slice(5, 7), 16) / 255
+  return {
+    color: new BABYLON.Color3(r, g, b),
+    emissive: new BABYLON.Color3(r * 0.5, g * 0.5, b * 0.5),
+  }
+}
 
 function startGame({ store, slotId, initialSim }) {
   if (typeof BABYLON === 'undefined' || !BABYLON.Engine.isSupported()) {
@@ -79,6 +93,32 @@ function startGame({ store, slotId, initialSim }) {
   // never reads it directly — it only ever sees the runMeta snapshot taken
   // when a run starts.
   let profile = store.getProfile(slotId)
+
+  // ── Stash screen (Bag <-> Stash <-> Equipment) ────────────────────────────
+  // Reads the canonical sources (sim bag, profile stash/loadout) and hands
+  // mutations back here. The legacy inventory screen (I) is a separate, older
+  // surface over the legacy item system; this one is the real thing.
+  const stashPanel = createStashPanel({
+    getBag: () => simState.player.inventory,
+    getProfile: () => profile,
+    onChange: ({ inventory, profile: nextProfile }) => {
+      if (inventory) {
+        simState = { ...simState, player: { ...simState.player, inventory } }
+      }
+      if (nextProfile) profile = nextProfile
+      persist()
+    },
+    onClose: () => {
+      game.state.paused = false
+      game.state.atStash = false
+      game.state.stashOpen = false
+    },
+  })
+  game.openStashPanel = () => {
+    game.state.paused = true
+    game.state.stashOpen = true
+    stashPanel.open()
+  }
 
   // Pending input for next tick
   let pendingInput = {
@@ -139,7 +179,18 @@ function startGame({ store, slotId, initialSim }) {
     pendingInput.gateReroll = false
 
     const prevPhase = simState.phase
+    const prevLogLen = simState.log.length
     simState = tick(simState, deltaMs, input)
+
+    // Hand any new sim item drops to the render layer so it can show a pickup
+    // at the next corpse. The sim already banked the item — this is display
+    // only, and it replaces the legacy layer's separate Math.random() roll.
+    for (let i = prevLogLen; i < simState.log.length; i++) {
+      const ev = simState.log[i]
+      if (ev.type !== 'item_drop') continue
+      const item = (simState.player.inventory ?? []).find(it => it && it.uid === ev.payload.uid)
+      if (item) game.simDropQueue.push({ ...item, fromSim: true, rarityConfig: rarityMesh(item.rarity) })
+    }
 
     // Sync key sim stats → legacy render layer so UI reflects sim state
     syncSimToRender(simState, game)
@@ -231,6 +282,7 @@ function startGame({ store, slotId, initialSim }) {
       earned: profile.achievements.includes(a.id),
     }))
     window.__endRun = () => { simState = { ...simState, phase: 'dead' } }
+    window.__openStash = () => game.openStashPanel()
 
     // ── Items: run bag, stash, and loadout ─────────────────────────────────
     const describe = (item, i) => item && ({
@@ -337,7 +389,8 @@ function startGame({ store, slotId, initialSim }) {
       '  window.__unequip(slot)    — return equipped gear to the stash',
       '  window.__autoEquip()      — greedily equip the best of everything',
       '  window.__sortStash()      — sort stash by item score',
-      '  E at the stash in Home Base — open the gear screen',
+      '  window.__openStash()      — open the Bag/Stash/Equipment screen',
+      '  E at the stash in Home Base — open the same screen',
       '  window.__newRun(seed?)    — restart with optional seed',
       '  window.__save()           — force-save active slot now',
       '  window.__store            — save store (list/get/remove/...)',

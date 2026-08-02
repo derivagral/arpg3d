@@ -94,6 +94,40 @@ The stash requires a keypress precisely because a portal does not: walking past
 your storage should never pull you into a menu, and walking into red should
 never be ambiguous.
 
+## The stash screen
+`src/ui/stashPanel.js` is the Bag ⇄ Stash ⇄ Equipment surface, opened with
+**E** at the home-base stash (or `__openStash()`). Three columns:
+
+- **Run Bag** — click an item to move it to the stash; "Deposit all" empties it
+- **Stash** — click to equip into the best slot via `bestSlotFor()`, which
+  prefers an empty compatible slot and otherwise replaces your *weakest* one,
+  so a second ring fills the free finger instead of overwriting the first
+- **Equipped** — click to return a piece to the stash; "Auto" runs `autoEquip()`
+
+It reads the canonical sources directly (SimState bag, profile stash/loadout)
+and routes every mutation through the pure helpers in `sim/inventory.js`, so
+the panel owns no state of its own. It deliberately does **not** touch the
+legacy `InventoryManager`.
+
+Gear changes apply to the **next** run — the screen says so, because the
+snapshot rule makes it non-obvious.
+
+## One item pipeline
+The legacy layer used to roll its own item on every kill with `Math.random()`
+and its own generator, so the loot on the ground had nothing to do with the
+loot you owned. Now:
+
+```
+sim rolls the item (seeded) → banked into the run bag → logs 'item_drop'
+  → src/main.js drains new item_drop events into game.simDropQueue
+  → js/game.js shows the next queued drop at the corpse it just made
+  → collecting it is cosmetic (flashLoot toast); the item is already yours
+```
+
+Sim-owned pickups carry `fromSim: true`. They never re-enter the legacy bag
+(the item would exist twice) and are never blocked by the legacy bag being
+full. `ItemGenerator` in `js/items.js` is now unused by the drop path.
+
 ## Dev console
 ```js
 window.__bag()            // items found in the current run
@@ -107,9 +141,11 @@ window.__stashItem(i)     // move a bag item straight to the stash
 ```
 
 ## Known gaps (deliberate — systems first, UX later)
-- The stash and inventory share one screen; there is no side-by-side transfer
-  view yet. The systems are separate even though the screens are not.
-- The legacy render layer still generates its own items via `js/items.js`
-  (`Math.random()`, no determinism). Sim items are canonical; the legacy
-  generator is display-only until pickups are ported.
+- No drag-and-drop, no filters, no multi-select; transfer is click-per-item
+  plus the bulk buttons.
+- The legacy inventory screen (**I**) still exists over the legacy item
+  system. It is now the *only* place legacy items appear, since drops no
+  longer create them; it should be retired once its stat panel moves over.
 - No crafting, no vendor, no item-level rarity bonuses per zone.
+- Stash overflow drops loot on run end (reported in console). A real "overflow
+  tab" or forced cleanup prompt is the eventual fix.
