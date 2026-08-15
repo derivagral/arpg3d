@@ -270,8 +270,51 @@ nobody later mistakes it for fact. Score reporting goes through that one narrow
 function precisely so that the day leaderboards become server-authoritative,
 only the shell changes.
 
-**ARPG3D still uses the synchronous `saves` store**, not the async
-`host.storage` adapter — it predates this contract. The shell namespaces that
-store by subject, so the identity model holds, but the game could not yet be
-moved into a Worker. Porting it is the remaining work; **new games should use
-`host.storage` from the start.**
+**Sandboxing.** Nothing isolates a game from the shell today. That is fine while
+every game is first-party; it stops being fine the moment a game is
+community-submitted, because same-origin code can read the identity layer's
+IndexedDB — which holds the **DPoP private keys and OAuth session**, i.e.
+enough to act as the player against their PDS. The host contract is shaped so
+that an iframe or Worker can be slid underneath it (see below), but that work
+has not been done and should be a hard prerequisite for third-party games.
+
+---
+
+## What the async storage API actually buys
+
+Every storage method is async even where the current implementation is not.
+That is cheap insurance, but it is worth being precise about what it insures
+against, because the obvious answer is the least valuable one.
+
+**The near-term payoff is not Workers.** It is:
+
+- **An HTTP/server backend.** Inherently async. A synchronous API forecloses it
+  without touching every call site.
+- **IndexedDB.** `localStorage` is synchronous-only, caps around 5MB, and blocks
+  the main thread on every write — and this game rewrites its whole envelope on
+  each wave clear. IndexedDB is async-only, so a sync API rules it out.
+
+Both are served by the backend split in `src/storage/backends/`: the save store
+owns the format, the backend owns the bytes, and swapping one does not touch the
+other.
+
+**Workers are a real but narrower win.** The mechanical link is that
+`localStorage` is a `Window`-only API — it does not exist inside a Worker at all
+— so code that could ever run off the main thread cannot use it. For this game
+specifically, Babylon needs the main thread for canvas and input, so "the game
+in a Worker" realistically means *the sim in a Worker*, and the sim is currently
+cheap. Two cases where it would genuinely pay off:
+
+- **Offline catch-up.** This is an idle game; "you were away 8 hours" means
+  simulating a very large number of ticks. On the main thread that is a frozen
+  tab. The sim is already pure and deterministic, which is exactly the shape
+  that ports cleanly.
+- **Verifying a run** by re-simulating from seed plus an input log — same
+  long-compute, must-not-freeze-the-UI story.
+
+The `pagehide` path is the one place async persistence genuinely cannot work: a
+promise may never resolve once the page is being torn down, so an async-only
+save loses the last checkpoint on every tab close. Backends therefore advertise
+an optional `canWriteSync`/`writeSync` capability, and callers **must**
+feature-detect it — a future HTTP backend will not have it and has to fall back
+to more frequent checkpoints.

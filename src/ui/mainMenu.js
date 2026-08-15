@@ -53,8 +53,8 @@ export const showMainMenu = ({ store, identity = null, claim = null, onStart }) 
     onStart({ slotId, simState })
   }
 
-  const playSlot = (id) => {
-    const file = store.get(id)
+  const playSlot = async (id) => {
+    const file = await store.get(id)
     if (!file) return setStatus('Save not found.', true)
     const { compatible, reason, file: usable } = checkCompatibility(file)
     if (!compatible) return setStatus(`Incompatible save: ${reason}`, true)
@@ -71,29 +71,29 @@ export const showMainMenu = ({ store, identity = null, claim = null, onStart }) 
     start(id, sim)
   }
 
-  const newRun = () => {
+  const newRun = async () => {
     const name = root.querySelector('#newRunName').value.trim() || defaultRunName()
     const seedText = root.querySelector('#newRunSeed').value.trim()
     const seed = seedText === '' ? Date.now() : Number(seedText)
     if (!Number.isFinite(seed)) return setStatus('Seed must be a number.', true)
 
     const sim = createState(seed)
-    const file = store.create(name, sim)
+    const file = await store.create(name, sim)
     start(file.id, sim)
   }
 
-  const importText = (text) => {
+  const importText = async (text) => {
     try {
-      const imported = store.importSaveFile(parseImportText(text))
-      render()  // re-render first — it rebuilds the status element
+      const imported = await store.importSaveFile(parseImportText(text))
+      await render()  // re-render first — it rebuilds the status element
       setStatus(`Imported "${imported.name}".`)
     } catch (e) {
       setStatus(`Import failed: ${e.message}`, true)
     }
   }
 
-  const exportJson = (id, name) => {
-    const json = store.exportJson(id)
+  const exportJson = async (id, name) => {
+    const json = await store.exportJson(id)
     if (!json) return setStatus('Save not found.', true)
     const blob = new Blob([json], { type: 'application/json' })
     const a = document.createElement('a')
@@ -104,7 +104,7 @@ export const showMainMenu = ({ store, identity = null, claim = null, onStart }) 
   }
 
   const copyCode = async (id) => {
-    const code = store.exportCode(id)
+    const code = await store.exportCode(id)
     if (!code) return setStatus('Save not found.', true)
     try {
       await navigator.clipboard.writeText(code)
@@ -114,8 +114,8 @@ export const showMainMenu = ({ store, identity = null, claim = null, onStart }) 
     }
   }
 
-  const render = () => {
-    const slots = store.list()
+  const render = async () => {
+    const slots = await store.list()
     root.innerHTML = `
       <div class="menu-panel">
         <h1>ARPG3D</h1>
@@ -153,23 +153,23 @@ export const showMainMenu = ({ store, identity = null, claim = null, onStart }) 
     `
 
     if (activeClaim) {
-      root.querySelector('#claimAccept').addEventListener('click', () => {
-        const { claimed, skipped } = activeClaim.accept()
+      root.querySelector('#claimAccept').addEventListener('click', async () => {
+        const { claimed, skipped } = await activeClaim.accept()
         // Answer first, then re-render: the copied saves have to show up in
         // the list, and the banner must not come back. setStatus runs after
         // render() because render() rebuilds the status element.
         activeClaim = null
-        render()
+        await render()
         setStatus(
           `Copied ${claimed} guest save${claimed === 1 ? '' : 's'} to your account.` +
           (skipped.length ? ` ${skipped.length} could not be copied.` : ''),
           skipped.length > 0
         )
       })
-      root.querySelector('#claimDecline').addEventListener('click', () => {
-        activeClaim.decline()
+      root.querySelector('#claimDecline').addEventListener('click', async () => {
+        await activeClaim.decline()
         activeClaim = null
-        render()
+        await render()
       })
     }
 
@@ -187,26 +187,28 @@ export const showMainMenu = ({ store, identity = null, claim = null, onStart }) 
     })
 
     root.querySelectorAll('[data-action]').forEach(btn => {
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', async () => {
         const { action, id, name } = btn.dataset
-        if (action === 'play') playSlot(id)
-        if (action === 'json') exportJson(id, name)
-        if (action === 'code') copyCode(id)
+        if (action === 'play') await playSlot(id)
+        if (action === 'json') await exportJson(id, name)
+        if (action === 'code') await copyCode(id)
         if (action === 'rename') {
           const next = window.prompt('Rename save:', name)
-          if (next && next.trim()) { store.rename(id, next.trim()); render() }
+          if (next && next.trim()) { await store.rename(id, next.trim()); await render() }
         }
         if (action === 'delete') {
           if (window.confirm(`Delete "${name}"? This cannot be undone.`)) {
-            store.remove(id)
-            render()
+            await store.remove(id)
+            await render()
           }
         }
       })
     })
   }
 
-  render()
+  // Returned so the shell can await the first paint. Everything below the
+  // initial render is event-driven, so nothing else needs to wait on it.
+  return render()
 }
 
 /**

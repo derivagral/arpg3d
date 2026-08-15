@@ -129,8 +129,11 @@ export const createHost = ({
 
   if (grant('saves')) {
     if (!saves) throw new Error(`host: game '${gameId}' declared 'saves' but the shell granted none`)
-    // The versioned slot store (sim/save.js format). Already namespaced to
-    // this subject by the shell — the game never chooses its own namespace.
+    // The versioned slot store (sim/save.js format): migration, export codes,
+    // compatibility verdicts — everything the generic `storage` adapter
+    // deliberately knows nothing about. Fully async, like `storage`, and
+    // already namespaced to this subject by the shell, so the game never
+    // chooses its own namespace.
     host.saves = saves
   }
 

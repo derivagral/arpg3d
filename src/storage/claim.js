@@ -29,9 +29,9 @@ export const CLAIM_KEY = `${IDENTITY_NS}:claims`
 
 const pairKey = (from, to) => `${subjectKey(from)}>${subjectKey(to)}`
 
-const readClaims = (storage) => {
+const readClaims = async (backend) => {
   try {
-    const raw = storage?.getItem(CLAIM_KEY)
+    const raw = await backend?.read(CLAIM_KEY)
     if (!raw) return {}
     const parsed = JSON.parse(raw)
     return parsed && typeof parsed === 'object' ? parsed : {}
@@ -40,24 +40,24 @@ const readClaims = (storage) => {
   }
 }
 
-const writeClaims = (storage, claims) => {
+const writeClaims = async (backend, claims) => {
   try {
-    storage?.setItem(CLAIM_KEY, JSON.stringify(claims))
+    await backend?.write(CLAIM_KEY, JSON.stringify(claims))
   } catch (_) { /* the offer will simply be made again next time */ }
 }
 
 /**
  * Has this guest→account pair already been answered (claimed or declined)?
- * @returns {boolean}
+ * @returns {Promise<boolean>}
  */
-export const claimAnswered = (storage, from, to) =>
-  Boolean(readClaims(storage)[pairKey(from, to)])
+export const claimAnswered = async (backend, from, to) =>
+  Boolean((await readClaims(backend))[pairKey(from, to)])
 
 /** Record an answer so the offer is not repeated. */
-export const recordClaimAnswer = (storage, from, to, answer) => {
-  const claims = readClaims(storage)
+export const recordClaimAnswer = async (backend, from, to, answer) => {
+  const claims = await readClaims(backend)
   claims[pairKey(from, to)] = { answer, at: Date.now() }
-  writeClaims(storage, claims)
+  await writeClaims(backend, claims)
 }
 
 /**
@@ -66,17 +66,17 @@ export const recordClaimAnswer = (storage, from, to, answer) => {
  * True only when there is something to bring, somewhere to bring it, and the
  * player has not already answered.
  *
- * @param {{ storage: Storage, from: string|null, to: object }} args
- * @returns {{ offer: boolean, count: number }}
+ * @param {{ backend: object, from: string|null, to: object }} args
+ * @returns {Promise<{ offer: boolean, count: number }>}
  */
-export const claimOffer = ({ storage, from, to }) => {
+export const claimOffer = async ({ backend, from, to }) => {
   const none = { offer: false, count: 0 }
   if (!from || !to?.subject) return none
   if (from === to.subject) return none              // signed in as the guest
   if (to.kind === 'anon') return none               // only upgrades get an offer
-  if (claimAnswered(storage, from, to.subject)) return none
+  if (await claimAnswered(backend, from, to.subject)) return none
 
-  const count = createSaveStore({ storage, subject: from }).list().length
+  const count = (await createSaveStore({ backend, subject: from }).list()).length
   return count > 0 ? { offer: true, count } : none
 }
 
@@ -87,33 +87,33 @@ export const claimOffer = ({ storage, from, to }) => {
  * schema-version mismatch on one slot must not cost the player the other
  * nine. They stay readable in the guest namespace either way.
  *
- * @param {{ storage: Storage, from: string, to: string }} args
- * @returns {{ claimed: number, skipped: Array<{ name: string, reason: string }> }}
+ * @param {{ backend: object, from: string, to: string }} args
+ * @returns {Promise<{ claimed: number, skipped: Array<{ name: string, reason: string }> }>}
  */
-export const claimSaves = ({ storage, from, to }) => {
-  const source = createSaveStore({ storage, subject: from })
-  const target = createSaveStore({ storage, subject: to })
+export const claimSaves = async ({ backend, from, to }) => {
+  const source = createSaveStore({ backend, subject: from })
+  const target = createSaveStore({ backend, subject: to })
 
   let claimed = 0
   const skipped = []
 
-  for (const slot of source.list()) {
-    const file = source.get(slot.id)
+  for (const slot of await source.list()) {
+    const file = await source.get(slot.id)
     if (!file) continue
     try {
       // importSaveFile validates, migrates, and always assigns a fresh id.
-      target.importSaveFile(file)
+      await target.importSaveFile(file)
       claimed++
     } catch (err) {
       skipped.push({ name: slot.name, reason: err.message })
     }
   }
 
-  recordClaimAnswer(storage, from, to, 'claimed')
+  await recordClaimAnswer(backend, from, to, 'claimed')
   return { claimed, skipped }
 }
 
 /** Remember that the player said no, without copying anything. */
-export const declineClaim = ({ storage, from, to }) => {
-  recordClaimAnswer(storage, from, to, 'declined')
+export const declineClaim = async ({ backend, from, to }) => {
+  await recordClaimAnswer(backend, from, to, 'declined')
 }

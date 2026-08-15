@@ -24,6 +24,7 @@
 import { createShellIdentity } from './identity/boot.js'
 import { isAnon } from './identity/identity.js'
 import { createSaveStore, adoptLegacySaves } from './storage/saveStore.js'
+import { createLocalStorageBackend } from './storage/backends/localStorage.js'
 import { claimOffer, claimSaves, declineClaim } from './storage/claim.js'
 import { createHost } from './host/host.js'
 import { findGame } from './games/registry.js'
@@ -42,6 +43,11 @@ window.addEventListener('DOMContentLoaded', () => {
 
 async function boot() {
   const storage = globalThis.localStorage
+  // Saves go through an async backend so the store underneath can become
+  // IndexedDB or an HTTP API without touching a call site. Identity keeps
+  // using localStorage directly — it holds two small strings, and it has to
+  // be readable before anything async has had a chance to run.
+  const backend = createLocalStorageBackend({ storage })
   const identityManager = createShellIdentity({ storage })
 
   // Always yields an Identity — a guest one if nothing else resolves. No
@@ -51,7 +57,7 @@ async function boot() {
   // Saves written before this build knew about subjects belong to whoever is
   // sitting at this browser, which is the guest. Adopt them once, so an
   // existing player does not open the menu to an empty save list.
-  if (isAnon(identity)) adoptLegacySaves(storage, identity.subject)
+  if (isAnon(identity)) await adoptLegacySaves(backend, identity.subject)
 
   const chip = mountIdentityChip({ manager: identityManager })
 
@@ -65,7 +71,7 @@ async function boot() {
     }
     chip.show()
     document.body.classList.remove('in-game')
-    showMenu(identityManager.current())
+    await showMenu(identityManager.current())
   }
 
   // Identity changing while a game runs is an exit-to-shell event, never
@@ -78,14 +84,14 @@ async function boot() {
     }
   })
 
-  const showMenu = (who) => {
-    const store = createSaveStore({ storage, subject: who.subject })
-    showMainMenu({
+  const showMenu = async (who) => {
+    const store = createSaveStore({ backend, subject: who.subject })
+    return showMainMenu({
       store,
       identity: who,
       // Offered once per guest→account pair, and only when there is actually
       // something to bring across. See src/storage/claim.js.
-      claim: buildClaimPrompt({ storage, identityManager, who }),
+      claim: await buildClaimPrompt({ backend, identityManager, who }),
       onStart: ({ slotId, simState }) =>
         launch({ identity: who, store, slotId, simState }).catch(err => {
           console.error('[shell] launch failed:', err)
@@ -121,7 +127,7 @@ async function boot() {
     active = { instance, subject: who.subject }
   }
 
-  showMenu(identity)
+  await showMenu(identity)
 }
 
 /**
@@ -129,22 +135,22 @@ async function boot() {
  * nothing to offer. Returned as data, not UI: the menu owns where it renders
  * and when it re-renders itself afterwards.
  */
-function buildClaimPrompt({ storage, identityManager, who }) {
+async function buildClaimPrompt({ backend, identityManager, who }) {
   const from = identityManager.anonSubject()
-  const { offer, count } = claimOffer({ storage, from, to: who })
+  const { offer, count } = await claimOffer({ backend, from, to: who })
   if (!offer) return null
 
   return {
     count,
-    accept() {
-      const { claimed, skipped } = claimSaves({ storage, from, to: who.subject })
+    async accept() {
+      const { claimed, skipped } = await claimSaves({ backend, from, to: who.subject })
       if (skipped.length) {
         console.warn('[claim] some saves could not be copied:', skipped)
       }
       return { claimed, skipped }
     },
-    decline() {
-      declineClaim({ storage, from, to: who.subject })
+    async decline() {
+      await declineClaim({ backend, from, to: who.subject })
     },
   }
 }

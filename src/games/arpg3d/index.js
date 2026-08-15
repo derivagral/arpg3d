@@ -11,14 +11,18 @@
  * for BABYLON, which is why the shell can boot, resolve identity and render
  * its pre-game screens without either of them having loaded.
  *
- * ── A seam that is not yet closed ───────────────────────────────────────────
- * ARPG3D predates this contract and still drives saves through the versioned
- * slot store (sim/save.js) rather than the generic `host.storage` adapter.
- * That store now arrives as the `saves` capability — namespaced to the
- * player's subject by the shell, so the identity model holds — but it is
- * synchronous, so this game could not yet be moved into a Worker. Porting it
- * onto the async `host.storage` API is the remaining work; new games should
- * use `host.storage` from the start.
+ * ── Persistence ─────────────────────────────────────────────────────────────
+ * Saves go through the `saves` capability: the versioned slot store, which
+ * owns the format (migration, export codes) that the generic `host.storage`
+ * adapter deliberately knows nothing about. Both are fully async, so nothing
+ * in this file touches `localStorage` and nothing assumes a synchronous
+ * backend — the store can become IndexedDB or an HTTP API underneath without
+ * a change here.
+ *
+ * The one exception is `pagehide`, where a promise may never resolve because
+ * the page is being torn down. That path asks the store for a synchronous
+ * flush and degrades to best-effort when the backend cannot offer one. See
+ * the autosave block below.
  */
 
 import { createState, tick, isRunOver } from '../../../sim/engine.js'
@@ -103,7 +107,7 @@ export async function mount(container, host) {
   // Held in memory and written alongside the run on every persist. The sim
   // never reads it directly — it only ever sees the runMeta snapshot taken
   // when a run starts.
-  let profile = store.getProfile(slotId)
+  let profile = await store.getProfile(slotId)
 
   // Player-level preferences the shell owns. Read once at mount: settings
   // changing mid-run is a shell concern, not something the game watches.
@@ -169,15 +173,40 @@ export async function mount(container, host) {
 
   // ── Autosave ───────────────────────────────────────────────────────────────
   // Persist the active slot at checkpoints: wave clear (combat→gate), death,
-  // and page hide. localStorage writes are a few KB — cheap at this cadence.
-  const persist = () => {
+  // and page hide. Writes are a few KB — cheap at this cadence.
+  //
+  // The store is async, so two checkpoints landing close together could
+  // otherwise stack up writes. Instead an in-flight write coalesces: a
+  // checkpoint arriving mid-write just marks the state dirty, and the loop
+  // re-reads `simState`/`profile` and writes once more with the newest values.
+  // That bounds outstanding writes at one, no matter the checkpoint rate.
+  let writing = false
+  let dirty = false
+  const persist = async () => {
+    if (writing) { dirty = true; return }
+    writing = true
     try {
-      store.update(slotId, simState, profile)
+      do {
+        dirty = false
+        await store.update(slotId, simState, profile)
+      } while (dirty)
     } catch (e) {
       console.warn('[save] autosave failed:', e)
+    } finally {
+      writing = false
     }
   }
-  window.addEventListener('pagehide', persist, { signal })
+
+  // Unload is the one place async persistence genuinely cannot work: the page
+  // may be torn down before a promise resolves, losing the last checkpoint on
+  // every tab close. Backends that can write synchronously say so, and this
+  // uses that path; ones that cannot (a future HTTP backend) fall back to a
+  // best-effort async write and rely on the checkpoints above.
+  const persistOnUnload = () => {
+    if (store.canWriteSync) store.updateSync(slotId, simState, profile)
+    else persist()
+  }
+  window.addEventListener('pagehide', persistOnUnload, { signal })
 
   // FPS counter (dev only)
   let fpsEl = null
@@ -363,7 +392,7 @@ export async function mount(container, host) {
     window.__newRun      = (seed) => { simState = createState(seed ?? Date.now()) }
 
     // Persistence controls
-    window.__save  = () => { persist(); return store.get(slotId) }
+    window.__save  = async () => { await persist(); return store.get(slotId) }
     window.__store = store
 
     // Identity + host surface (read-only — this is everything the game can see)
@@ -464,7 +493,7 @@ export async function mount(container, host) {
      * unpleasant surprise.
      */
     async unmount() {
-      persist()
+      await persist()
       teardown.abort()
       if (fpsTimer) clearInterval(fpsTimer)
       fpsEl?.remove()
