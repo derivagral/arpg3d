@@ -58,10 +58,13 @@ class PickupManager {
             );
 
             // Magnetic attraction (skip for items if inventory is full)
+            // Sim-owned drops are already banked, so a full legacy bag must
+            // never stop them being picked up.
+            const fromSim = pickup.type === 'item' && pickup.value && pickup.value.fromSim;
             const autoDestroyEnabled = pickup.type === 'item'
                 && this.game.inventoryManager
                 && this.game.inventoryManager.isAutoDestroyEnabled(pickup.value && pickup.value.rarity);
-            const shouldAttract = pickup.type !== 'item' || !inventoryFull || autoDestroyEnabled;
+            const shouldAttract = pickup.type !== 'item' || fromSim || !inventoryFull || autoDestroyEnabled;
             if (shouldAttract && distToPlayer < playerStats.magnetRadius) {
                 const direction = playerMesh.position.subtract(pickup.position);
                 direction.y = 0;

@@ -20,8 +20,30 @@
  */
 
 import { createState, tick, isRunOver } from '../sim/engine.js'
+import { MOVE_POLICIES } from '../sim/movement.js'
+import {
+  autoEquip as autoEquipItems,
+  equipFrom,
+  unequipTo,
+  sortContainer,
+  countItems,
+  loadoutScore,
+  transfer,
+} from '../sim/inventory.js'
+import { itemName, itemScore, rarityInfo, SLOTS } from '../sim/items.js'
+import {
+  awardRun,
+  summarizeRun,
+  runMetaFor,
+  purchaseUpgrade,
+  unlockedPolicies,
+  UPGRADES,
+  ACHIEVEMENTS,
+  upgradeCost,
+} from '../sim/profile.js'
 import { createSaveStore } from './storage/saveStore.js'
 import { showMainMenu } from './ui/mainMenu.js'
+import { createStashPanel } from './ui/stashPanel.js'
 
 window.addEventListener('DOMContentLoaded', () => {
   // The menu is deliberately pre-Babylon: it must work even if the CDN
@@ -33,6 +55,19 @@ window.addEventListener('DOMContentLoaded', () => {
     onStart: ({ slotId, simState }) => startGame({ store, slotId, initialSim: simState }),
   })
 })
+
+// Babylon colours for a dropped item's mesh, keyed by rarity. Kept here
+// rather than in sim/ so the sim stays free of render concerns.
+function rarityMesh(rarity) {
+  const hex = rarityInfo(rarity).color
+  const r = parseInt(hex.slice(1, 3), 16) / 255
+  const g = parseInt(hex.slice(3, 5), 16) / 255
+  const b = parseInt(hex.slice(5, 7), 16) / 255
+  return {
+    color: new BABYLON.Color3(r, g, b),
+    emissive: new BABYLON.Color3(r * 0.5, g * 0.5, b * 0.5),
+  }
+}
 
 function startGame({ store, slotId, initialSim }) {
   if (typeof BABYLON === 'undefined' || !BABYLON.Engine.isSupported()) {
@@ -53,18 +88,75 @@ function startGame({ store, slotId, initialSim }) {
   // ── Sim state (primary source of truth) ───────────────────────────────────
   let simState = initialSim
 
+  // ── Character profile (persistent meta, survives death) ───────────────────
+  // Held in memory and written alongside the run on every persist. The sim
+  // never reads it directly — it only ever sees the runMeta snapshot taken
+  // when a run starts.
+  let profile = store.getProfile(slotId)
+
+  // ── Stash screen (Bag <-> Stash <-> Equipment) ────────────────────────────
+  // Reads the canonical sources (sim bag, profile stash/loadout) and hands
+  // mutations back here. The legacy inventory screen (I) is a separate, older
+  // surface over the legacy item system; this one is the real thing.
+  const stashPanel = createStashPanel({
+    getBag: () => simState.player.inventory,
+    getProfile: () => profile,
+    onChange: ({ inventory, profile: nextProfile }) => {
+      if (inventory) {
+        simState = { ...simState, player: { ...simState.player, inventory } }
+      }
+      if (nextProfile) profile = nextProfile
+      persist()
+    },
+    onClose: () => {
+      game.state.paused = false
+      game.state.atStash = false
+      game.state.stashOpen = false
+    },
+  })
+  game.openStashPanel = () => {
+    game.state.paused = true
+    game.state.stashOpen = true
+    stashPanel.open()
+  }
+
   // Pending input for next tick
   let pendingInput = {
-    gateChoice: null,  // null = let autopilot decide (if enabled)
-    autopilot: true,   // autopilot on by default
+    gateChoice: null,   // null = let autopilot decide (if enabled)
+    autopilot: true,    // autopilot on by default
+    gateReroll: false,  // single-frame: spend gold to reroll gate options
+    move: null,         // { x, z } manual movement; null = use movePolicy
+    movePolicy: 'center',
   }
+
+  // Manual movement capability: WASD/arrows feed the sim as an input vector,
+  // overriding the idle policy while keys are held. Manual play is not a
+  // separate code path — same tick, same balance, still deterministic.
+  const held = new Set()
+  const MOVE_KEYS = {
+    KeyW: [0, -1], ArrowUp: [0, -1],
+    KeyS: [0, 1],  ArrowDown: [0, 1],
+    KeyA: [-1, 0], ArrowLeft: [-1, 0],
+    KeyD: [1, 0],  ArrowRight: [1, 0],
+  }
+  const readMoveKeys = () => {
+    let x = 0, z = 0
+    for (const code of held) {
+      const v = MOVE_KEYS[code]
+      if (v) { x += v[0]; z += v[1] }
+    }
+    return (x === 0 && z === 0) ? null : { x, z }
+  }
+  window.addEventListener('keydown', (e) => { if (MOVE_KEYS[e.code]) held.add(e.code) })
+  window.addEventListener('keyup',   (e) => held.delete(e.code))
+  window.addEventListener('blur',    () => held.clear())
 
   // ── Autosave ───────────────────────────────────────────────────────────────
   // Persist the active slot at checkpoints: wave clear (combat→gate), death,
   // and page hide. localStorage writes are a few KB — cheap at this cadence.
   const persist = () => {
     try {
-      store.update(slotId, simState)
+      store.update(slotId, simState, profile)
     } catch (e) {
       console.warn('[save] autosave failed:', e)
     }
@@ -82,11 +174,23 @@ function startGame({ store, slotId, initialSim }) {
     if (game.state.paused) return
 
     const deltaMs = engine.getDeltaTime()
-    const input = { ...pendingInput }
-    pendingInput.gateChoice = null  // consume single-frame input
+    const input = { ...pendingInput, move: pendingInput.move ?? readMoveKeys() }
+    pendingInput.gateChoice = null   // consume single-frame inputs
+    pendingInput.gateReroll = false
 
     const prevPhase = simState.phase
+    const prevLogLen = simState.log.length
     simState = tick(simState, deltaMs, input)
+
+    // Hand any new sim item drops to the render layer so it can show a pickup
+    // at the next corpse. The sim already banked the item — this is display
+    // only, and it replaces the legacy layer's separate Math.random() roll.
+    for (let i = prevLogLen; i < simState.log.length; i++) {
+      const ev = simState.log[i]
+      if (ev.type !== 'item_drop') continue
+      const item = (simState.player.inventory ?? []).find(it => it && it.uid === ev.payload.uid)
+      if (item) game.simDropQueue.push({ ...item, fromSim: true, rarityConfig: rarityMesh(item.rarity) })
+    }
 
     // Sync key sim stats → legacy render layer so UI reflects sim state
     syncSimToRender(simState, game)
@@ -96,12 +200,28 @@ function startGame({ store, slotId, initialSim }) {
       persist()
     }
 
-    // Auto-restart sim when run ends — no alert, no interruption to the
-    // playable legacy game. The slot keeps the new run from the next
-    // checkpoint on; inspect the completed run via window.__sim() before
-    // it resets (it's replaced on the next frame).
+    // Run ended: fold it into the character profile (echoes, record depth,
+    // lifetime stats, achievement unlocks), persist, then start a fresh run
+    // from a NEW meta snapshot so purchases and unlocks take effect.
     if (isRunOver(simState)) {
-      simState = createState(Date.now())
+      const { profile: earned, echoes, unlocked, stashed, overflow } = awardRun(profile, summarizeRun(simState))
+      profile = earned
+      persist()
+
+      console.log(
+        `[run] depth ${simState.depth} → +${echoes.total} echoes` +
+        (echoes.pb > 0 ? ` (${echoes.pb} from a new record)` : '') +
+        ` | ${profile.echoes} banked`
+      )
+      for (const a of unlocked) {
+        console.log(`[unlocked] ${a.name} — ${a.desc}${a.grants ? ` → ${a.grants}` : ''}`)
+      }
+      if (stashed.length) console.log(`[stash] +${stashed.length} items (${countItems(profile.stash)} stored)`)
+      if (overflow.length) {
+        console.warn(`[stash] FULL — ${overflow.length} item(s) could not be stored and were lost.`)
+      }
+
+      simState = createState(Date.now(), runMetaFor(profile))
     }
   })
 
@@ -114,7 +234,107 @@ function startGame({ store, slotId, initialSim }) {
 
     // Input controls
     window.__pickGate    = (idx) => { pendingInput.gateChoice = idx }
+    window.__rerollGate  = () => { pendingInput.gateReroll = true }
     window.__setAutopilot = (on) => { pendingInput.autopilot = on }
+    window.__setMovePolicy = (name) => {
+      pendingInput.movePolicy = name
+      const allowed = simState.runMeta?.policies ?? []
+      if (!allowed.includes(name)) {
+        console.warn(`[policy] '${name}' is not unlocked for this run — the sim will ignore it.`,
+          `Unlocked: ${allowed.join(', ')}`)
+      }
+      return allowed
+    }
+    window.__movePolicies = () => ({
+      all: Object.keys(MOVE_POLICIES),
+      unlocked: unlockedPolicies(profile),
+      activeThisRun: simState.runMeta?.policies ?? [],
+    })
+
+    // ── Meta progression ───────────────────────────────────────────────────
+    window.__profile = () => profile
+    window.__board = () => UPGRADES.map(u => {
+      const level = profile.upgrades[u.id] ?? 0
+      const cost = upgradeCost(u.id, level)
+      return {
+        id: u.id, name: u.name, desc: u.desc,
+        level, maxLevel: u.maxLevel,
+        cost: cost ?? 'MAXED',
+        affordable: cost !== null && profile.echoes >= cost,
+      }
+    })
+    window.__buy = (id) => {
+      const { profile: next, bought, cost } = purchaseUpgrade(profile, id)
+      if (!bought) {
+        console.warn(`[board] could not buy '${id}'`,
+          cost === null ? '(unknown or maxed)' : `(costs ${cost}, have ${profile.echoes})`)
+        return false
+      }
+      profile = next
+      persist()
+      console.log(`[board] bought ${id} → level ${profile.upgrades[id]} (-${cost} echoes, ${profile.echoes} left).`,
+        'Takes effect on the next run.')
+      return true
+    }
+    window.__achievements = () => ACHIEVEMENTS.map(a => ({
+      id: a.id, name: a.name, desc: a.desc,
+      grants: a.grants ?? '—',
+      earned: profile.achievements.includes(a.id),
+    }))
+    window.__endRun = () => { simState = { ...simState, phase: 'dead' } }
+    window.__openStash = () => game.openStashPanel()
+
+    // ── Items: run bag, stash, and loadout ─────────────────────────────────
+    const describe = (item, i) => item && ({
+      i, uid: item.uid, name: itemName(item), kind: item.kind,
+      rarity: item.rarity, ilvl: item.ilvl, score: itemScore(item),
+      affixes: item.affixes.map(a => a.id),
+    })
+    window.__bag = () => (simState.player.inventory ?? []).map(describe).filter(Boolean)
+    window.__stash = () => (profile.stash ?? []).map(describe).filter(Boolean)
+    window.__gear = () => ({
+      slots: Object.fromEntries(SLOTS.map(s => [s, profile.equipment[s] ? itemName(profile.equipment[s]) : '—'])),
+      score: loadoutScore(profile.equipment),
+      note: 'Changes apply to the NEXT run — gear is snapshotted at run start.',
+    })
+    window.__equip = (stashIndex, slot) => {
+      const res = equipFrom(profile.equipment, profile.stash, stashIndex, slot)
+      if (!res.equipped) { console.warn(`[gear] cannot equip: ${res.reason}`); return false }
+      profile = { ...profile, equipment: res.equipment, stash: res.container }
+      persist()
+      console.log(`[gear] equipped ${itemName(res.equipped)} → ${slot} (next run)`)
+      return true
+    }
+    window.__unequip = (slot) => {
+      const res = unequipTo(profile.equipment, profile.stash, slot)
+      if (!res.removed) { console.warn(`[gear] nothing to unequip at ${slot} (or stash full)`); return false }
+      profile = { ...profile, equipment: res.equipment, stash: res.container }
+      persist()
+      return true
+    }
+    window.__autoEquip = () => {
+      const res = autoEquipItems(profile.equipment, profile.stash)
+      profile = { ...profile, equipment: res.equipment, stash: res.container }
+      persist()
+      console.log(`[gear] auto-equipped ${res.changes.length} slot(s):`,
+        res.changes.map(c => `${c.slot}=${itemName(c.item)}`).join(', ') || '(nothing better)')
+      return window.__gear()
+    }
+    window.__sortStash = () => {
+      profile = { ...profile, stash: sortContainer(profile.stash) }
+      persist()
+      return window.__stash().length
+    }
+    // Move an item from the live run bag straight into the stash (normally
+    // this happens automatically when the run ends).
+    window.__stashItem = (bagIndex) => {
+      const res = transfer(simState.player.inventory, profile.stash, bagIndex)
+      if (!res.moved) { console.warn('[stash] nothing moved (empty slot or stash full)'); return false }
+      simState = { ...simState, player: { ...simState.player, inventory: res.from } }
+      profile = { ...profile, stash: res.to }
+      persist()
+      return true
+    }
     window.__newRun      = (seed) => { simState = createState(seed ?? Date.now()) }
 
     // Persistence controls
@@ -148,7 +368,29 @@ function startGame({ store, slotId, initialSim }) {
       'Sim API:',
       '  window.__sim()            — live SimState snapshot',
       '  window.__pickGate(0|1|2)  — manually resolve next gate',
+      '  window.__rerollGate()     — spend gold to reroll gate options',
       '  window.__setAutopilot(false) — take manual control',
+      '  window.__setMovePolicy(name) — hold | center | patrol | kite',
+      '  WASD / arrows             — manual movement (overrides policy)',
+      '',
+      'Meta (persists across deaths, per character slot):',
+      '  window.__profile()        — echoes, record depth, unlocks, lifetime',
+      '  window.__board()          — upgrade board with costs/affordability',
+      '  window.__buy(id)          — buy a level (applies to the NEXT run)',
+      '  window.__achievements()   — checklist; these grant movement policies',
+      '  window.__movePolicies()   — all vs unlocked vs active this run',
+      '  window.__endRun()         — end the run now and bank its echoes',
+      '',
+      'Items:',
+      '  window.__bag()            — items found in the current run',
+      '  window.__stash()          — stored items (persists across runs)',
+      '  window.__gear()           — equipped loadout + score',
+      '  window.__equip(i, slot)   — equip stash item i (applies NEXT run)',
+      '  window.__unequip(slot)    — return equipped gear to the stash',
+      '  window.__autoEquip()      — greedily equip the best of everything',
+      '  window.__sortStash()      — sort stash by item score',
+      '  window.__openStash()      — open the Bag/Stash/Equipment screen',
+      '  E at the stash in Home Base — open the same screen',
       '  window.__newRun(seed?)    — restart with optional seed',
       '  window.__save()           — force-save active slot now',
       '  window.__store            — save store (list/get/remove/...)',

@@ -1,10 +1,26 @@
 // Enhanced Game Configuration
 const CONFIG = {
+    // Container sizes. Mirrors INVENTORY_SIZE / STASH_SIZE in sim/inventory.js
+    // (canonical). Bigger than a classic 24-slot bag on purpose: sorting gear
+    // should be the interesting part, not fighting for space.
+    inventory: {
+        size: 48,
+        stashSize: 240
+    },
+
+    // Combat rules shared with the sim. sim/ is the canonical balance source:
+    // when these disagree, sim/engine.js wins and this file follows.
+    combat: {
+        // Max enemies that can melee the player simultaneously (surround limit).
+        // Mirrors ENGAGEMENT_SLOTS in sim/engine.js.
+        engagementSlots: 5
+    },
+
     player: {
         initialHealth: 100,
         initialSpeed: 0.15,
-        initialDamage: 10,
-        initialAttackSpeed: 1000, // ms between attacks
+        initialDamage: 20,        // sim: BASE_PLAYER.damage
+        initialAttackSpeed: 800,  // sim: BASE_PLAYER.attackSpeed
         initialAttackRange: 8, // Increased from 3
         pickupRadius: 2,
         magnetRadius: 5, // Increased from 4
@@ -17,46 +33,54 @@ const CONFIG = {
     },
     
     enemies: {
+        // Stats mirror ENEMY_TEMPLATES in sim/engine.js (canonical). Speed is
+        // balanced against player speed 0.15: 'fast' outruns the player and
+        // must be killed, 'swarm' nearly keeps pace, 'basic'/'tank' are
+        // kiteable. size/color/emissive are render-only concerns.
         types: {
             basic: {
-                health: 30,
-                speed: 0.03,
+                health: 20,
+                speed: 0.06,
                 speedVariance: 0.02,
-                damage: 5,
+                damage: 3,
+                attackMs: 2000,
                 size: 0.8,
                 color: new BABYLON.Color3(1, 0.2, 0.2),
                 emissive: new BABYLON.Color3(0.5, 0.1, 0.1),
-                xpValue: 1
+                xpValue: 5
             },
             fast: {
-                health: 20,
-                speed: 0.08,
+                health: 10,
+                speed: 0.17,
                 speedVariance: 0.03,
-                damage: 3,
+                damage: 2,
+                attackMs: 1200,
                 size: 0.6,
                 color: new BABYLON.Color3(1, 0.8, 0.2),
                 emissive: new BABYLON.Color3(0.5, 0.4, 0.1),
-                xpValue: 2
+                xpValue: 4
             },
             tank: {
-                health: 100,
-                speed: 0.02,
+                health: 70,
+                speed: 0.035,
                 speedVariance: 0.01,
-                damage: 10,
+                damage: 8,
+                attackMs: 3500,
                 size: 1.2,
                 color: new BABYLON.Color3(0.4, 0.2, 0.6),
                 emissive: new BABYLON.Color3(0.2, 0.1, 0.3),
-                xpValue: 5
+                xpValue: 15
             },
             swarm: {
-                health: 10,
-                speed: 0.06,
+                health: 6,
+                speed: 0.13,
                 speedVariance: 0.04,
-                damage: 2,
+                damage: 1,
+                attackMs: 1200,
                 size: 0.4,
                 color: new BABYLON.Color3(0.2, 1, 0.2),
                 emissive: new BABYLON.Color3(0.1, 0.5, 0.1),
-                xpValue: 1
+                xpValue: 2
             }
         },
         spawnDistance: 12,

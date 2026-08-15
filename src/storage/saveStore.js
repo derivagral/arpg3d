@@ -18,6 +18,7 @@ import {
   SAVE_SCHEMA_VERSION,
   GAME_ID,
 } from '../../sim/save.js'
+import { hydrateProfile } from '../../sim/profile.js'
 
 export const STORAGE_KEY = `${GAME_ID}:saves:v1`
 const BACKUP_KEY = `${STORAGE_KEY}:corrupt-backup`
@@ -76,26 +77,39 @@ export const createSaveStore = (storage = globalThis.localStorage) => {
      * Create a new slot from a live SimState.
      * @returns {object} the stored SaveFile
      */
-    create(name, simState) {
+    create(name, simState, profile = null) {
       const envelope = read()
-      const file = createSaveFile(simState, { name })
+      const file = createSaveFile(simState, { name, profile })
       envelope.saves[file.id] = file
       write(envelope)
       return file
     },
 
     /**
-     * Overwrite a slot's sim snapshot (autosave path).
+     * Overwrite a slot's sim snapshot (autosave path). Pass `profile` to
+     * persist meta changes alongside the run; omitted, the slot keeps the
+     * profile it already had.
      * @returns {object|null} updated SaveFile, or null if the slot is gone
      */
-    update(id, simState) {
+    update(id, simState, profile = null) {
       const envelope = read()
       const existing = envelope.saves[id]
       if (!existing) return null
-      const file = updateSaveFile(existing, simState)
+      const file = updateSaveFile(existing, simState, Date.now(), profile)
       envelope.saves[id] = file
       write(envelope)
       return file
+    },
+
+    /**
+     * A slot's persistent character profile, migrated if needed.
+     * @returns {object|null} profile, or null if the slot is gone
+     */
+    getProfile(id) {
+      const file = this.get(id)
+      if (!file) return null
+      const { compatible, file: migrated } = checkCompatibility(file)
+      return hydrateProfile((compatible ? migrated : file).profile)
     },
 
     /** @returns {object|null} */

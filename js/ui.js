@@ -59,8 +59,67 @@ class UIManager {
         this.initializeEquipmentSlots();
     }
 
+    /**
+     * Proximity prompt for world interactables (stash, portals).
+     * Built lazily in JS so no index.html/CSS change is needed. Colour is
+     * passed by the caller so a stash and a combat portal never look alike.
+     */
+    showInteractionPrompt(label, hint, color = '#ffffff') {
+        if (!this.interactionPrompt) {
+            const el = document.createElement('div');
+            el.id = 'interactionPrompt';
+            el.style.cssText = [
+                'position:fixed', 'left:50%', 'bottom:120px', 'transform:translateX(-50%)',
+                'padding:10px 18px', 'border-radius:8px',
+                'background:rgba(10,12,18,0.82)', 'border:1px solid rgba(255,255,255,0.18)',
+                'font-family:monospace', 'text-align:center', 'pointer-events:none',
+                'z-index:120', 'transition:opacity 0.15s', 'opacity:0'
+            ].join(';');
+            document.body.appendChild(el);
+            this.interactionPrompt = el;
+        }
+        this.interactionPrompt.innerHTML =
+            `<div style="font-size:15px;font-weight:bold;color:${color}">${label}</div>` +
+            `<div style="font-size:12px;color:#c8c8c8;margin-top:2px">${hint}</div>`;
+        this.interactionPrompt.style.opacity = '1';
+    }
+
+    /** Brief toast when a sim-owned drop is collected. The item is already in
+     *  the run bag — this is the feedback that it happened. */
+    flashLoot(item) {
+        if (!this.lootToast) {
+            const el = document.createElement('div');
+            el.id = 'lootToast';
+            el.style.cssText = [
+                'position:fixed', 'left:50%', 'bottom:180px', 'transform:translateX(-50%)',
+                'font-family:monospace', 'font-size:13px', 'pointer-events:none',
+                'z-index:118', 'text-shadow:0 2px 6px rgba(0,0,0,0.9)',
+                'transition:opacity 0.4s', 'opacity:0'
+            ].join(';');
+            document.body.appendChild(el);
+            this.lootToast = el;
+        }
+        const colors = {
+            common: '#b8b8b8', uncommon: '#4caf50', rare: '#3f8cff',
+            epic: '#a24cff', legendary: '#ffb300'
+        };
+        const label = item.rarity ? `${item.rarity} ${item.kind || 'item'}` : 'item';
+        this.lootToast.textContent = `+ ${label}`;
+        this.lootToast.style.color = colors[item.rarity] || '#dddddd';
+        this.lootToast.style.opacity = '1';
+        clearTimeout(this._lootToastTimer);
+        this._lootToastTimer = setTimeout(() => {
+            if (this.lootToast) this.lootToast.style.opacity = '0';
+        }, 1200);
+    }
+
+    hideInteractionPrompt() {
+        if (this.interactionPrompt) this.interactionPrompt.style.opacity = '0';
+    }
+
     initializeInventorySlots() {
-        const slotsCount = 24; // 24 inventory slots for now
+        // One source of truth with the manager and the sim (CONFIG.inventory.size)
+        const slotsCount = (CONFIG.inventory && CONFIG.inventory.size) || 48;
 
         for (let i = 0; i < slotsCount; i++) {
             const slot = document.createElement('div');

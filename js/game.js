@@ -27,8 +27,14 @@ class Game {
             startTime: Date.now(),
             paused: false,
             upgradesPending: 0,
-            inventoryOpen: false
+            inventoryOpen: false,
+            atStash: false,
+            stashOpen: false
         };
+
+        // Item drops produced by the sim, waiting to be shown as world pickups.
+        // The sim is the only thing that rolls items — see handleEnemyDeath.
+        this.simDropQueue = [];
 
         // Shorthand for enemies (for compatibility)
         this.enemies = this.state.enemies;
@@ -52,6 +58,20 @@ class Game {
                 this.toggleInventory();
                 return;
             }
+
+            // Open the stash on E, but only while standing at it. Requiring a
+            // key press (unlike portals, which trigger on contact) means you
+            // can walk past your storage without being pulled into a menu.
+            if (key === 'e') {
+                if (this.areaManager && this.areaManager.isAtStash() && !this.state.inventoryOpen) {
+                    this.openStash();
+                }
+                return;
+            }
+
+            // The stash panel owns the screen while open and handles its own
+            // keys; don't let ESC/P unpause the game behind it.
+            if (this.state.stashOpen) return;
 
             // Pause on ESC or P (but not if inventory is open)
             if (key === 'escape' || key === 'p') {
@@ -82,6 +102,20 @@ class Game {
         }
     }
 
+    /**
+     * Open the Bag/Stash/Equipment screen. The panel itself is an ES module
+     * (src/ui/stashPanel.js) wired up in src/main.js, which installs
+     * openStashPanel() on this instance — it reads canonical sim/profile
+     * state, unlike the older legacy inventory screen on I.
+     */
+    openStash() {
+        if (!this.openStashPanel) return;
+        this.state.atStash = true;
+        this.state.stashOpen = true;
+        if (this.ui.hideInteractionPrompt) this.ui.hideInteractionPrompt();
+        this.openStashPanel();
+    }
+
     toggleInventory() {
         this.state.inventoryOpen = !this.state.inventoryOpen;
 
@@ -92,6 +126,7 @@ class Game {
         } else {
             // Close inventory and unpause the game
             this.state.paused = false;
+            this.state.atStash = false;
             this.ui.hideInventory();
         }
     }
@@ -127,11 +162,18 @@ class Game {
             this.pickupManager.createPickup(position, 'gold', goldAmount);
         }
 
-        // Item drop (scaled by item-find buffs)
-        const itemDropChance = (CONFIG.items.dropChances[enemy.type] || 0.05) * dropMult * itemFind;
-        if (Math.random() < itemDropChance) {
-            const item = ItemGenerator.generateItem({ wave: this.spawnManager.currentWave });
-            this.pickupManager.createPickup(position, 'item', item);
+        // Item drop — DISPLAY ONLY.
+        //
+        // The sim rolls every item (seeded, deterministic) and banks it into
+        // the run bag the moment it drops. This layer used to roll a second,
+        // parallel item with Math.random() and its own generator, so the loot
+        // you saw on the ground had nothing to do with the loot you owned.
+        // Now src/main.js drains the sim's item_drop events into simDropQueue
+        // and we simply show the next one at this corpse. Picking it up is a
+        // visual flourish; the item is already yours.
+        const simDrop = this.simDropQueue.shift();
+        if (simDrop) {
+            this.pickupManager.createPickup(position, 'item', simDrop);
         }
 
         // Special death effects
@@ -169,32 +211,37 @@ class Game {
     updateEnemies(currentTime) {
         if (this.state.paused) return;
 
-        this.state.enemies = this.state.enemies.filter(enemy => {
-            // Update enemy (movement and actions)
+        // Enemies in contact persist and swing on their own cooldown; only
+        // player damage kills them. Death-on-contact used to consume the
+        // enemy AND pay out a full kill reward, which let ehp builds clear
+        // waves by standing still and inflated the economy.
+        // Mirrors the sim melee model (sim/engine.js).
+        const contact = [];
+        for (const enemy of this.state.enemies) {
             enemy.update(this, currentTime);
 
-            // Check collision with player
             const distToPlayer = BABYLON.Vector3.Distance(
                 enemy.mesh.position,
                 this.player.mesh.position
             );
+            if (distToPlayer < 1) contact.push({ enemy, distToPlayer });
+        }
 
-            if (distToPlayer < 1) {
-                this.player.lastDamageSource = {
-                    name: enemy.name || enemy.type || 'Enemy',
-                    damage: enemy.damage,
-                    type: 'contact'
-                };
-                this.player.takeDamage(enemy.damage);
-                this.ui.updateHealthBar();
+        // Surround limit: only the closest N enemies can attack at once,
+        // so incoming dps doesn't scale with the size of the pile.
+        contact.sort((a, b) => a.distToPlayer - b.distToPlayer);
+        for (const { enemy } of contact.slice(0, CONFIG.combat.engagementSlots)) {
+            if (currentTime - enemy.lastHitTime < enemy.attackMs) continue;
+            enemy.lastHitTime = currentTime;
 
-                this.handleEnemyDeath(enemy, enemy.mesh.position.clone());
-                enemy.destroy();
-                return false;
-            }
-
-            return true;
-        });
+            this.player.lastDamageSource = {
+                name: enemy.name || enemy.type || 'Enemy',
+                damage: enemy.damage,
+                type: 'contact'
+            };
+            this.player.takeDamage(enemy.damage);
+            this.ui.updateHealthBar();
+        }
     }
 
     updateProjectiles() {
@@ -257,6 +304,14 @@ class Game {
             },
             // onItemCollected callback
             (item) => {
+                // Sim-owned drops are already in the run bag; collecting the
+                // mesh is purely cosmetic. Never re-add, or the item would
+                // exist twice.
+                if (item && item.fromSim) {
+                    if (this.ui.flashLoot) this.ui.flashLoot(item);
+                    return true;
+                }
+
                 const result = this.inventoryManager.addItem(item);
 
                 if (result === true) {

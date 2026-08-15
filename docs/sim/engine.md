@@ -12,28 +12,64 @@ const done   = isRunOver(state)         // true when phase === 'dead'
 ## What tick() does per frame
 
 ### Gate phase
-1. If `input.gateChoice !== null` → `resolveGate(state, choice)` → spawn next wave → `phase = 'combat'`
-2. Else if `input.autopilot` → call `autoPickGate(gate, state)` → same as above
-3. Else → do nothing (wait for player input)
+1. If `input.gateReroll` → `rerollGate(state)` (gold sink, see docs/sim/gold.md) — consumes the frame
+2. Else if `input.gateChoice !== null` → `resolveGate(state, choice)` → spawn next wave → `phase = 'combat'`
+3. Else if `input.autopilot` → call `autoPickGate(gate, state)` → same as above
+4. Else → do nothing (wait for player input)
 
 ### Combat phase
-1. HP regen (if `stats.regen > 0`)
-2. Move all enemies toward origin (player position = 0,0 in sim space)
-3. Enemy melee hits (enemies within dist < 1.0 deal damage and are removed)
-4. Auto-attack: if `ticksSinceAttack >= attackIntervalTicks` and enemies in range:
-   - Find nearest enemy within `stats.attackRange`
+1. Derive stats; refresh `player.maxHp` from them (see "Stat ownership")
+2. HP regen (if `stats.regen > 0`)
+3. Player movement: `resolveMove()` — manual `input.move` if present, else the
+   active `input.movePolicy` (docs/sim/movement.md), clamped to the arena
+4. Move all enemies toward the player's current position
+5. Enemy melee: enemies within dist < 1.0 persist and swing on their own
+   cooldown (`template.attackMs`, per-enemy `lastHitTick`), limited to the
+   `ENGAGEMENT_SLOTS` closest
+6. Auto-attack: if `ticksSinceAttack >= attackIntervalTicks` and enemies in range:
+   - Find nearest enemy within `stats.attackRange` of the player
    - `calcDamage(...)` with current RNG
-   - If enemy hp ≤ 0: kill, grant XP, apply lifesteal
-5. Player death check: if `hp ≤ 0` → `phase = 'dead'`
-6. Wave clear check: if `enemies.length === 0` → `generateGate()` → `phase = 'gate'`
+   - If enemy hp ≤ 0: kill
+7. Player death check: if `hp ≤ 0` → `phase = 'dead'`
+8. Wave clear check: if `enemies.length === 0` → `generateGate()` → `phase = 'gate'`
+
+Only player attacks kill. Each kill goes through `creditKill()`: xp,
+`player.kills[type]` increment, lifesteal, and a gold drop roll
+(`sim/gold.js`). Death-on-contact was removed — it let ehp builds
+auto-clear waves and starved the kill-driven economy. It may return later
+as a thorns-style player stat (attackers die to reflected damage).
+
+### Stat ownership
+`derivePlayerStats()` in `sim/player.js` is the ONLY place effective stats
+are computed. `player.maxHp` is a *cache* of `stats.maxHp`, refreshed every
+combat tick and on gate resolution — never accumulated onto player state.
+A second accumulation path silently desyncs the two the moment stats can be
+granted outside a gate (items, echoes, module hooks).
+
+### Melee balance model
+With persistent attackers and a surround limit, damage taken is bounded by
+`ENGAGEMENT_SLOTS` rather than wave size, and survival is a dps race
+against how long enemies stay in contact — which is what makes movement the
+dominant lever. Partial recovery at each gate (`GATE_HEAL_FRACTION`, see
+docs/sim/gate.md) keeps total hp from hard-capping run depth.
+
+Tuning targets (autopilot gate picks, headless): death at depth ~4 standing
+still, ~17–23 patrolling, ~22+ kiting. See docs/sim/movement.md for the
+speed-vs-player balance premise that keeps movement a tradeoff.
 
 ### Dead phase
 No-op — run is over.
 
-## Enemy positions
-Enemies exist in a flat 2D space (x, z). Player is always at origin (0, 0).
-The sim does not track player position — enemies move toward (0, 0).
-Render layer adds Babylon.js mesh positions on top of this.
+## Enemy ids
+Enemy ids come from `state.nextId`, threaded through `spawnWave()` and
+stored in the save snapshot — never a module-level counter, which would
+diverge across resumed or parallel runs and break determinism.
+
+## Positions
+Everything exists in a flat 2D space (x, z). The player has a real position
+(`player.x`, `player.z`) bounded by the arena disc, and enemies path toward
+it. See docs/sim/movement.md for policies, arena bounds, and the manual
+control override. The render layer draws these positions; it never owns them.
 
 ## Wave scaling (ledge zone)
 ```js

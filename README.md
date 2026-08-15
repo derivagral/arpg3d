@@ -17,9 +17,15 @@ npm run dev       # Vite dev server at localhost:5173
 sim/              Pure game logic — zero browser deps, Node-importable
   rng.js          Seeded RNG (mulberry32), functional state threading
   affixes.js      AFFIX_POOL (20 affixes), rollAffix, deriveStats
+  player.js       BASE_PLAYER + derivePlayerStats (single stat derivation)
   pity.js         Per-tag drought counters, quadratic boost
   damage.js       Flat -> increased -> more -> crit pipeline (PoE-standard)
-  gate.js         Gate generation (2-3 options), resolution
+  gold.js         Kill drop table, gate reroll costs
+  profile.js      Per-character meta: echoes, upgrade board, achievement unlocks
+  items.js        Seeded item generation: kinds, rarities, drop tables
+  inventory.js    Bounded containers (bag/stash), equipment, auto-equip
+  movement.js     Arena bounds, idle movement policies, manual override
+  gate.js         Gate generation (2-3 options), resolution, gold reroll
   engine.js       tick(state, deltaMs, input) -> newState
   autopilot.js    Naive scoring — intentionally beatable by manual play
   save.js         Save file codec: versioned snapshots, export codes
@@ -57,28 +63,55 @@ createState(seed)
       +------------- player hp <= 0 ----------------------------> [dead]
 ```
 
-**Combat**: enemies move toward player, auto-attack fires at nearest in range,
-damage goes through the full pipeline (flat + increased + more + crit).
+**Combat**: the player moves (manual input, or an idle movement policy) inside
+a bounded arena; enemies path toward them and swing on a cooldown once in
+contact, capped by a surround limit. Auto-attack fires at the nearest enemy in
+range and damage goes through the full pipeline (flat + increased + more + crit).
+Only player attacks kill.
 
-**Gate**: player (or autopilot) picks one of 2-3 affix offers. Pity weights
-boost under-represented tags — if you haven't seen crit in 5 gates, it gets 2x weight.
+**Gate**: player (or autopilot) picks one of 2-3 affix offers, and may spend
+gold to reroll the offers. Pity weights boost under-represented tags — if you
+haven't seen crit in 5 gates, it gets 2x weight.
 
-**Dead**: run is over. Same seed replays identically.
+**Dead**: the run ends and folds into the character profile — echoes by depth
+reached, a bonus for beating your record, plus any achievements earned. Then a
+fresh run starts from a new meta snapshot. Same seed *and the same input
+sequence* replay identically.
+
+**Items**: kills drop seeded items into a 48-slot run bag. When the run ends the
+haul moves into the character's 240-slot **stash**, which persists forever.
+Equipment lives on the profile and enters a run through the same immutable
+snapshot as the rest of meta, so gear can't change mid-run. See
+`docs/sim/items.md`.
+
+**Meta**: a save slot is a **character**, not a run. Its profile (echoes, an
+upgrade board, achievement unlocks) survives death; runs are attempts inside
+it. Meta enters a run only as an immutable snapshot taken at run start, so
+buying an upgrade can never rewrite a replay. Movement policies are *earned*
+through achievements rather than bought. See `docs/sim/profile.md`.
+
+**Movement** is a first-class sim concern, not a render detail: manual control
+is just an input that overrides the active idle policy (`hold` / `center` /
+`patrol` / `kite`), so ARPG controls and idle automation share one tick and one
+balance model. Which policy is running is the single largest lever on how deep
+a run goes. See `docs/sim/movement.md`.
 
 ## Saving
 
 The page boots into a save slot menu (pre-Babylon, plain DOM). Runs live in
 `localStorage` and autosave on wave clear, death, and tab close. Slots can be
-exported as JSON or a portable `arpg3d.v1.<base64url>` code and re-imported
+exported as JSON or a portable `arpg3d.v2.<base64url>` code and re-imported
 anywhere — saves carry a schema version and are validated/migrated on load.
 See `docs/save-system.md` for the format and versioning rules.
 
 ## Controls
 
-- **WASD / Arrow Keys** — move player
+- **WASD / Arrow Keys** — move player (overrides the idle movement policy while held)
 - **ESC / P** — pause
 - **I** — inventory
+- **E** — open the Bag/Stash/Equipment screen (at the stash in Home Base; ESC or E closes)
 - Auto-attacks nearest enemy within range
+- Release the movement keys and the active idle policy takes back over
 
 ## Dev console (localhost only)
 
@@ -86,7 +119,21 @@ See `docs/save-system.md` for the format and versioning rules.
 // Sim state (primary source of truth)
 window.__sim()                // live SimState snapshot
 window.__pickGate(0)          // manually resolve current gate (0, 1, or 2)
+window.__rerollGate()         // spend gold to reroll the current gate's offers
 window.__setAutopilot(false)  // disable autopilot for manual play
+window.__setMovePolicy('kite')// idle movement AI: hold | center | patrol | kite
+window.__movePolicies()       // all vs unlocked vs active-this-run
+window.__profile()            // character meta: echoes, record depth, unlocks
+window.__board()              // upgrade board with costs and affordability
+window.__buy('vitality')      // spend echoes (applies to the NEXT run)
+window.__achievements()       // checklist; these grant movement policies
+window.__endRun()             // end the run now and bank its echoes
+window.__bag()                // items found this run
+window.__stash()              // stored items (persist across runs)
+window.__gear()               // equipped loadout + score
+window.__equip(0, 'weapon')   // equip stash item (applies to the NEXT run)
+window.__autoEquip()          // greedily equip the best of everything
+window.__openStash()          // open the stash screen from anywhere
 window.__newRun(42)           // restart with specific seed
 window.__save()               // force-save the active slot
 window.__store                // save store (list/get/remove/exportCode/...)
@@ -135,7 +182,7 @@ late game biases defense. Designed to be naive — manual play should outperform
 - **Tests**: `npm test` runs `node --test sim/**/*.test.js` — pure functions, no browser
 - **MD agent states**: `docs/AGENTS.md` scopes context per task (load only what's relevant)
 - **New zones**: duplicate `waveForDepth`, add zone field to SimState
-- **Meta layer**: currency, atlas, crafting built on sim/affixes.js
+- **Meta layer**: items/stash, atlas, crafting built on sim/affixes.js (echoes and the upgrade board are in — see docs/sim/profile.md)
 
 ## License
 

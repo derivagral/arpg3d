@@ -10,6 +10,7 @@ progression mechanic — no other way to gain affixes currently.
 Gate = {
   options: GateOption[],   // 2 options at depth < 3, 3 options at depth >= 3
   depth: number,           // depth at which this gate was generated
+  rerolls: number,         // gold rerolls spent on this gate (cost doubles each)
 }
 
 GateOption = {
@@ -34,10 +35,33 @@ generateGate(depth, rngState, pity, existingIds)
 resolveGate(state, choiceIdx)
   1. Validate choiceIdx
   2. Append chosen affix to player.affixes
-  3. resetDroughts(pity, chosenTags)
-  4. Transition phase → 'combat'
-  5. Append to log: { tick, type: 'gate_resolved', payload: { choiceIdx, affixId, depth } }
+  3. Recompute player.maxHp via derivePlayerStats(newAffixes) — the single
+     derivation, never accumulation (see docs/sim/engine.md "Stat ownership");
+     player.hp grows by the same gain so added maxHp is usable immediately
+  4. Heal GATE_HEAL_FRACTION (30%) of maxHp — wave-clear recovery
+  5. resetDroughts(pity, chosenTags)
+  6. Transition phase → 'combat'
+  7. Append to log: { tick, type: 'gate_resolved', payload: { choiceIdx, affixId, depth } }
 ```
+The heal exists because melee enemies persist and chip: without recovery
+between waves, total hp would hard-cap run depth regardless of build.
+Partial (not full) so damage taken still carries pressure forward.
+
+## Reroll flow (gold sink)
+```
+rerollGate(state)
+  1. No-op if no gate, or player.gold < rerollCost(gate.depth, gate.rerolls)
+  2. Re-roll all options, excluding held affixes AND the current offers
+     (a paid reroll always changes the slate)
+  3. Deduct cost, increment gate.rerolls
+  4. Append to log: { type: 'gate_rerolled', payload: { depth, cost, rerolls } }
+```
+Pity is deliberately untouched: droughts ticked when the gate opened, and a
+reroll is a re-draw of the same gate — ticking again would let players pump
+pity boosts by rerolling. Engine input: `{ gateReroll: true }` during the
+gate phase consumes the frame (options are picked from on a later tick).
+Cost curve and tuning intent live in docs/sim/gold.md. The autopilot never
+rerolls — gold judgement is a manual-play edge by design.
 
 ## Future gate types
 To add a new gate type (e.g., "Forge" where you upgrade an existing affix):

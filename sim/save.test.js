@@ -6,6 +6,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
 import { createState, tick } from './engine.js'
+import { createProfile, BASE_POLICIES } from './profile.js'
 import { AFFIX_POOL } from './affixes.js'
 import {
   SAVE_SCHEMA_VERSION,
@@ -171,4 +172,58 @@ test('parseImportText accepts raw JSON and portable codes', () => {
   const file = createSaveFile(createState(3), { name: 'imp' })
   assert.deepEqual(parseImportText(JSON.stringify(file)), file)
   assert.deepEqual(parseImportText(encodeSaveCode(file)), file)
+})
+
+// ── v1 → v2: slots became characters ────────────────────────────────────────
+
+test('a v1 save migrates to v2 with a fresh profile and runMeta', () => {
+  // Build a v1-shaped file: no profile on the envelope, no runMeta in the sim
+  const modern = createSaveFile(runFor(11, 1500), { name: 'legacy slot' })
+  const { profile: _p, ...envelope } = modern
+  const { runMeta: _m, ...sim } = modern.sim
+  const legacy = { ...envelope, v: 1, sim }
+
+  const { compatible, file, migrated } = checkCompatibility(legacy)
+  assert.ok(compatible, 'v1 must have a migration path')
+  assert.ok(migrated)
+  assert.equal(file.v, SAVE_SCHEMA_VERSION)
+
+  assert.deepEqual(file.profile, createProfile(), 'starts as a brand-new character')
+  assert.deepEqual(
+    file.sim.runMeta.policies, BASE_POLICIES,
+    'a migrated run has only the base policies'
+  )
+
+  // And it still loads and ticks
+  const { state } = hydrateSim(file.sim)
+  assert.equal(state.depth, legacy.sim.depth)
+  assert.doesNotThrow(() => tick(state, 16.67, { autopilot: true }))
+})
+
+test('the profile round-trips through create/update and reaches slot meta', () => {
+  const state = runFor(13, 1200)
+  const profile = {
+    ...createProfile(), echoes: 140, bestDepth: 9, runs: 4,
+    upgrades: { vitality: 2 }, unlocks: ['policy:patrol'],
+  }
+
+  const file = createSaveFile(state, { name: 'char', profile })
+  assert.equal(file.profile.echoes, 140)
+  assert.equal(file.meta.echoes, 140, 'slot list can show standing without hydrating')
+  assert.equal(file.meta.bestDepth, 9)
+
+  // Omitting the profile on update preserves the one already stored
+  const kept = updateSaveFile(file, state)
+  assert.deepEqual(kept.profile, file.profile)
+
+  // Passing one overwrites it
+  const bumped = updateSaveFile(file, state, Date.now(), { ...profile, echoes: 300 })
+  assert.equal(bumped.profile.echoes, 300)
+  assert.equal(bumped.meta.echoes, 300)
+})
+
+test('a save created without a profile still validates and loads', () => {
+  const file = createSaveFile(createState(2), { name: 'no profile' })
+  assert.deepEqual(file.profile, createProfile())
+  assert.ok(checkCompatibility(file).compatible)
 })
