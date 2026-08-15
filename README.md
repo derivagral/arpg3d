@@ -31,9 +31,14 @@ sim/              Pure game logic — zero browser deps, Node-importable
   save.js         Save file codec: versioned snapshots, export codes
 
 src/              ES module entry point
-  main.js         Bootstrap: main menu -> sim state + Babylon.js + autosave
-  storage/        localStorage save slot CRUD (saveStore.js)
-  ui/             Pre-Babylon DOM menu (mainMenu.js)
+  main.js         The shell: resolve identity -> pre-game menu -> mount a game
+  identity/       Who is playing. Providers (guest, atproto), manager, OAuth
+  host/           The shell<->game boundary: capabilities, storage, settings
+  games/          Game modules — each exports { manifest, mount }
+  storage/        Save slot CRUD, namespaced by identity subject
+  ui/             Shell chrome: pre-game menu, identity chip, sign-in panel
+
+oauth/callback/   OAuth redirect landing page (a real file, not a route)
 
 js/               Legacy Babylon.js render layer (browser globals)
   config.js       Game balance constants
@@ -103,6 +108,35 @@ The page boots into a save slot menu (pre-Babylon, plain DOM). Runs live in
 exported as JSON or a portable `arpg3d.v2.<base64url>` code and re-imported
 anywhere — saves carry a schema version and are validated/migrated on load.
 See `docs/save-system.md` for the format and versioning rules.
+
+## Identity
+
+The site shell owns identity; the game is a guest that receives an
+already-resolved player context. **You can play without signing in** — a guest
+identity is minted on first visit and is a real, save-bearing identity, not a
+null. There is no login wall.
+
+Signing in uses **atproto** (type a handle, authenticate on your own PDS — this
+app never sees a password) and is identity-only: it yields your DID and nothing
+else. Saves are keyed on that DID, so they follow you to another machine.
+Signing in offers a one-time copy of your guest saves; it is a copy, so signing
+out returns you to exactly what you had.
+
+Adding another auth method means writing one provider object and registering
+it — no other file changes. Games never see a token and never learn atproto
+exists.
+
+```bash
+npm run dev       # then browse http://127.0.0.1:5173 — NOT localhost, see below
+
+# GitHub Pages project site (served from a subpath):
+SITE_BASE=/arpg3d/ SITE_ORIGIN=https://<user>.github.io npm run build
+```
+
+Dev must be browsed at `127.0.0.1`: atproto's loopback `client_id` requires the
+redirect to land there, and `localhost` is a different origin whose session is
+invisible to the callback. See `docs/identity.md` for the full contract, the
+provider interface, and the trust boundaries.
 
 ## Controls
 

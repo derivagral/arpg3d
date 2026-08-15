@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<!--
+  oauth/callback/index.html — the atproto OAuth redirect target.
+
+  This is a REAL directory with a REAL file in it, registered as a second Vite
+  entry point in vite.config.js. It is deliberately not a client-side route:
+  GitHub Pages serves static files with no SPA rewrite, so a router-only path
+  would 404 when the PDS redirects back here.
+
+  The URL of this page (with its trailing slash) is what goes into
+  `redirect_uris` in client-metadata.json, and it must match byte-for-byte.
+-->
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex">
+    <title>Signing in… — ARPG3D</title>
+    <style>
+        body {
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #0e0f13;
+            color: #e6e8ef;
+            font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+        }
+        .box { text-align: center; padding: 24px; }
+        .spinner {
+            width: 34px; height: 34px;
+            margin: 0 auto 18px;
+            border: 3px solid rgba(255, 255, 255, 0.15);
+            border-top-color: #7aa2f7;
+            border-radius: 50%;
+            animation: spin 0.9s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        @media (prefers-reduced-motion: reduce) {
+            .spinner { animation-duration: 3s; }
+        }
+        #status { font-size: 15px; color: #b9bed0; }
+        #home {
+            display: inline-block;
+            margin-top: 18px;
+            color: #7aa2f7;
+        }
+    </style>
+</head>
+<body>
+    <div class="box">
+        <div class="spinner" id="spinner"></div>
+        <div id="status">Completing sign-in…</div>
+        <a id="home" href="/" hidden>Back to the game</a>
+    </div>
+    <script type="module" src="/src/identity/callback.js"></script>
+</body>
+</html>

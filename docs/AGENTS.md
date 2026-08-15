@@ -22,7 +22,10 @@ Each subsystem is designed so its context fits in a single focused session.
 | Babylon.js render / visuals      | docs/render/overview.md, docs/render/babylon.md  | src/main.js, js/game.js                   |
 | New zone type                    | docs/sim/engine.md, docs/sim/gate.md             | sim/engine.js, sim/gate.js                |
 | Writing tests for sim            | docs/sim/overview.md                             | sim/**/*.js (import in Node, no browser)  |
-| Save format / persistence / menu | docs/save-system.md                              | sim/save.js, src/storage/saveStore.js, src/ui/mainMenu.js |
+| Save format / persistence / menu | docs/save-system.md, docs/identity.md            | sim/save.js, src/storage/saveStore.js, src/ui/mainMenu.js |
+| Identity / login / auth methods  | docs/identity.md                                 | src/identity/**, src/ui/identityChip.js, src/ui/signInPanel.js |
+| Shell / game-host contract       | docs/identity.md                                 | src/host/**, src/games/registry.js, src/main.js |
+| Adding a new game module         | docs/identity.md                                 | src/games/*/manifest.js, src/games/*/index.js |
 | Rewards / meta-progression / modules | docs/design/rewards-and-loops.md             | sim/affixes.js, sim/gate.js, sim/save.js  |
 | Internal API design              | docs/sim/overview.md, docs/render/overview.md    | sim/engine.js, src/main.js                |
 
@@ -39,3 +42,11 @@ Each subsystem is designed so its context fits in a single focused session.
    Never accumulate a stat onto player state alongside it.
 9. A run never reads live profile state. Meta enters a run once, as the
    `runMeta` snapshot taken at `createState()` — see docs/sim/profile.md.
+10. NO GAME MODULE (`src/games/**`) MAY IMPORT `@atproto/*` OR TOUCH
+    `localStorage` DIRECTLY. If a game needs something, it comes through the
+    `host` object it was mounted with — see docs/identity.md. This is what
+    keeps identity swappable and games sandboxable.
+11. Saves are keyed on identity SUBJECT (a DID, or `anon:<uuid>`), never on a
+    handle. A handle can change hands; a subject cannot.
+12. `src/identity/` has zero dependencies on game code, storage, or any auth
+    library beyond its own providers — it must stay importable in Node.

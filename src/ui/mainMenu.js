@@ -21,12 +21,22 @@ import { runMetaFor, hydrateProfile } from '../../sim/profile.js'
 
 /**
  * @param {{ store: ReturnType<import('../storage/saveStore.js').createSaveStore>,
+ *           identity?: object,
+ *           claim?: { count: number, accept: () => object, decline: () => void } | null,
  *           onStart: (args: { slotId: string, simState: object }) => void }} opts
  */
-export const showMainMenu = ({ store, onStart }) => {
+export const showMainMenu = ({ store, identity = null, claim = null, onStart }) => {
+  // The menu is a singleton. The shell re-shows it whenever it returns from a
+  // game or the identity changes, and stacking a second copy on top of a live
+  // one would leave the buried menu's handlers wired to a stale save store.
+  document.getElementById('mainMenu')?.remove()
+
   const root = document.createElement('div')
   root.id = 'mainMenu'
   document.body.appendChild(root)
+
+  // Cleared once answered, so the banner does not survive its own re-render.
+  let activeClaim = claim
 
   let statusTimer = null
   const setStatus = (msg, isError = false) => {
@@ -110,6 +120,7 @@ export const showMainMenu = ({ store, onStart }) => {
       <div class="menu-panel">
         <h1>ARPG3D</h1>
         <div class="menu-status"></div>
+        ${renderClaim(activeClaim)}
 
         <div class="menu-section">
           <h2>New Run</h2>
@@ -140,6 +151,27 @@ export const showMainMenu = ({ store, onStart }) => {
         </div>
       </div>
     `
+
+    if (activeClaim) {
+      root.querySelector('#claimAccept').addEventListener('click', () => {
+        const { claimed, skipped } = activeClaim.accept()
+        // Answer first, then re-render: the copied saves have to show up in
+        // the list, and the banner must not come back. setStatus runs after
+        // render() because render() rebuilds the status element.
+        activeClaim = null
+        render()
+        setStatus(
+          `Copied ${claimed} guest save${claimed === 1 ? '' : 's'} to your account.` +
+          (skipped.length ? ` ${skipped.length} could not be copied.` : ''),
+          skipped.length > 0
+        )
+      })
+      root.querySelector('#claimDecline').addEventListener('click', () => {
+        activeClaim.decline()
+        activeClaim = null
+        render()
+      })
+    }
 
     root.querySelector('#newRunBtn').addEventListener('click', newRun)
     root.querySelector('#newRunName').addEventListener('keydown', e => { if (e.key === 'Enter') newRun() })
@@ -175,6 +207,28 @@ export const showMainMenu = ({ store, onStart }) => {
   }
 
   render()
+}
+
+/**
+ * The one-time "bring your guest saves with you?" offer, shown after a first
+ * sign-in. Worded to make clear this is a copy: the guest saves stay where
+ * they are, so declining costs nothing and signing out gets you back to them.
+ */
+const renderClaim = (claim) => {
+  if (!claim) return ''
+  return `
+    <div class="menu-claim">
+      <div class="claim-text">
+        You have ${claim.count} save${claim.count === 1 ? '' : 's'} from playing as a guest.
+        Copy ${claim.count === 1 ? 'it' : 'them'} to this account? Your guest saves stay
+        where they are either way.
+      </div>
+      <div class="claim-actions">
+        <button id="claimAccept" class="menu-btn primary">Copy to my account</button>
+        <button id="claimDecline" class="menu-btn">No thanks</button>
+      </div>
+    </div>
+  `
 }
 
 const renderSlot = (slot) => {
