@@ -1,18 +1,26 @@
 /**
- * sim/save.js — Save file codec (pure, Node-importable)
+ * sim/save.js — ARPG3D's save BODY (pure, Node-importable)
  *
- * Converts a live SimState into a versioned, serializable save file and back.
- * No storage here — persistence (localStorage, file download) lives in
- * src/storage/. This module owns the FORMAT:
+ * Converts a live SimState to a serializable snapshot and back, and declares
+ * ARPG3D's save spec. It does NOT own the envelope: the magic tag, schema
+ * versioning, migration runner, compatibility verdict and portable export
+ * codes are generic and live in src/storage/saveFormat.js, composed into a
+ * usable codec by src/games/arpg3d/save.js.
  *
- *   SaveFile {
+ * The split is what lets a second game reuse all of that machinery without
+ * importing anything out of `sim/`, which is ARPG3D's own logic. Nothing here
+ * depends on src/ — this module stays dependency-free.
+ *
+ *   SaveFile {                — envelope, from src/storage/saveFormat.js
  *     game: 'arpg3d'          — magic, rejects foreign JSON on import
  *     v: number               — SAVE_SCHEMA_VERSION at write time
  *     id: string              — slot identifier ('sv_xxxxxxxx')
  *     name: string            — user-facing slot name
  *     createdAt: number       — epoch ms
  *     updatedAt: number       — epoch ms
+ *                             — body, from this module:
  *     meta: object            — denormalized summary for list UIs (depth, gold, ...)
+ *     profile: object         — persistent character meta (echoes, upgrades)
  *     sim: object             — serialized SimState snapshot
  *   }
  *
@@ -23,8 +31,8 @@
  * load over a balance patch.
  *
  * Versioning: bump SAVE_SCHEMA_VERSION on breaking format changes and add a
- * step migration to MIGRATIONS (v → v+1). checkCompatibility() runs migrations
- * implicitly via migrateSaveFile() before declaring a save incompatible.
+ * step migration to MIGRATIONS (v → v+1). The envelope runs them before
+ * declaring a save incompatible.
  */
 
 import { AFFIX_POOL } from './affixes.js'
@@ -209,79 +217,34 @@ export const buildMeta = (state, profile = null) => ({
   runs: profile?.runs ?? 0,
 })
 
-export const newSaveId = () =>
-  'sv_' + Math.floor(Math.random() * 0xffffffff).toString(36) + Date.now().toString(36)
+// ── ARPG3D's save spec ───────────────────────────────────────────────────────
+// The envelope (magic tag, versioning, migration, export codes) is generic and
+// lives in src/storage/saveFormat.js. This module supplies only the parts that
+// are actually about ARPG3D, and stays free of any dependency on src/.
+//
+// Composed into a usable codec by src/games/arpg3d/save.js.
 
 /**
- * Wrap a SimState into a complete versioned save file.
- *
- * @param {import('./engine.js').SimState} state
- * @param {{ id?: string, name?: string, createdAt?: number, now?: number }} [opts]
- * @returns {object} SaveFile
+ * Structural validation of the ARPG3D body. The envelope checks the game tag,
+ * version, id and name; this checks that the sim snapshot is loadable.
+ * @returns {string[]} complaints; empty means fine
  */
-export const createSaveFile = (state, opts = {}) => {
-  const now = opts.now ?? Date.now()
-  const profile = hydrateProfile(opts.profile ?? createProfile())
-  return {
-    game: GAME_ID,
-    v: SAVE_SCHEMA_VERSION,
-    id: opts.id ?? newSaveId(),
-    name: opts.name ?? 'Unnamed Run',
-    createdAt: opts.createdAt ?? now,
-    updatedAt: now,
-    meta: buildMeta(state, profile),
-    profile,
-    sim: serializeSim(state),
-  }
-}
-
-/**
- * Refresh an existing save file with a newer SimState (preserves identity).
- * Pass `profile` to persist meta changes (echoes awarded, upgrades bought);
- * omitted, the file keeps the profile it already had.
- */
-export const updateSaveFile = (file, state, now = Date.now(), profile = null) => {
-  const nextProfile = hydrateProfile(profile ?? file.profile ?? createProfile())
-  return {
-    ...file,
-    v: SAVE_SCHEMA_VERSION,
-    updatedAt: now,
-    meta: buildMeta(state, nextProfile),
-    profile: nextProfile,
-    sim: serializeSim(state),
-  }
-}
-
-// ── Validation & compatibility ───────────────────────────────────────────────
-
-/**
- * Structural validation — is this object shaped like a save file at all?
- * @param {*} obj
- * @returns {{ ok: boolean, errors: string[] }}
- */
-export const validateSaveFile = (obj) => {
+export const validateSimBody = (obj) => {
   const errors = []
-  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) {
-    return { ok: false, errors: ['not an object'] }
-  }
-  if (obj.game !== GAME_ID) errors.push(`game tag '${obj.game}' is not '${GAME_ID}'`)
-  if (!Number.isInteger(obj.v)) errors.push('missing schema version (v)')
-  if (typeof obj.id !== 'string' || !obj.id) errors.push('missing id')
-  if (typeof obj.name !== 'string') errors.push('missing name')
   const sim = obj.sim
   if (!sim || typeof sim !== 'object') {
     errors.push('missing sim snapshot')
-  } else {
-    if (typeof sim.seed !== 'number') errors.push('sim.seed must be a number')
-    if (typeof sim.rng !== 'number') errors.push('sim.rng must be a number')
-    if (!['combat', 'gate', 'dead'].includes(sim.phase)) errors.push(`bad sim.phase '${sim.phase}'`)
-    if (!Number.isInteger(sim.depth) || sim.depth < 1) errors.push('sim.depth must be a positive integer')
-    if (!sim.player || typeof sim.player !== 'object') errors.push('missing sim.player')
-    else if (!Array.isArray(sim.player.affixes)) errors.push('sim.player.affixes must be an array')
-    if (!Array.isArray(sim.enemies)) errors.push('sim.enemies must be an array')
-    if (!sim.pity || typeof sim.pity !== 'object') errors.push('missing sim.pity')
+    return errors
   }
-  return { ok: errors.length === 0, errors }
+  if (typeof sim.seed !== 'number') errors.push('sim.seed must be a number')
+  if (typeof sim.rng !== 'number') errors.push('sim.rng must be a number')
+  if (!['combat', 'gate', 'dead'].includes(sim.phase)) errors.push(`bad sim.phase '${sim.phase}'`)
+  if (!Number.isInteger(sim.depth) || sim.depth < 1) errors.push('sim.depth must be a positive integer')
+  if (!sim.player || typeof sim.player !== 'object') errors.push('missing sim.player')
+  else if (!Array.isArray(sim.player.affixes)) errors.push('sim.player.affixes must be an array')
+  if (!Array.isArray(sim.enemies)) errors.push('sim.enemies must be an array')
+  if (!sim.pity || typeof sim.pity !== 'object') errors.push('missing sim.pity')
+  return errors
 }
 
 /**
@@ -289,7 +252,7 @@ export const validateSaveFile = (obj) => {
  * Each entry: (saveFile) => saveFile with v incremented by 1.
  */
 export const MIGRATIONS = {
-  // v1 → v2: slots became characters. A v1 slot has no profile and its run
+  // v1 -> v2: slots became characters. A v1 slot has no profile and its run
   // has no runMeta; both get fresh defaults, so an old save loads as a
   // brand-new character mid-run with nothing unlocked and nothing lost.
   1: (file) => ({
@@ -303,105 +266,27 @@ export const MIGRATIONS = {
 }
 
 /**
- * Upgrade a save file to the current schema version, one step at a time.
- * Returns the original object untouched if already current or unmigratable.
- *
- * @param {object} file
- * @returns {{ file: object, migrated: boolean }}
+ * The game-specific half of a save file. `opts.profile` carries meta changes
+ * worth persisting (echoes awarded, upgrades bought); on an update with none
+ * supplied, the file keeps the profile it already had.
  */
-export const migrateSaveFile = (file) => {
-  let current = file
-  let migrated = false
-  while (Number.isInteger(current.v) && current.v < SAVE_SCHEMA_VERSION) {
-    const step = MIGRATIONS[current.v]
-    if (!step) return { file, migrated: false }
-    current = step(current)
-    migrated = true
+const buildBody = (state, opts = {}) => {
+  const profile = hydrateProfile(opts.profile ?? opts.previous?.profile ?? createProfile())
+  return {
+    meta: buildMeta(state, profile),
+    profile,
+    sim: serializeSim(state),
   }
-  return { file: current, migrated }
 }
 
 /**
- * Can this save be loaded by the current build?
- * Runs structural validation and (future) migrations.
- *
- * @param {*} obj
- * @returns {{ compatible: boolean, reason: string|null, file: object|null, migrated: boolean }}
+ * Hand this to createSaveFormat() to get ARPG3D's codec.
+ * @type {import('../src/storage/saveFormat.js').SaveSpec}
  */
-export const checkCompatibility = (obj) => {
-  const { ok, errors } = validateSaveFile(obj)
-  if (!ok) return { compatible: false, reason: errors.join('; '), file: null, migrated: false }
-
-  if (obj.v > SAVE_SCHEMA_VERSION) {
-    return {
-      compatible: false,
-      reason: `save schema v${obj.v} is newer than this build (v${SAVE_SCHEMA_VERSION})`,
-      file: null, migrated: false,
-    }
-  }
-  if (obj.v < SAVE_SCHEMA_VERSION) {
-    const { file, migrated } = migrateSaveFile(obj)
-    if (!migrated) {
-      return {
-        compatible: false,
-        reason: `save schema v${obj.v} has no migration path to v${SAVE_SCHEMA_VERSION}`,
-        file: null, migrated: false,
-      }
-    }
-    return { compatible: true, reason: null, file, migrated: true }
-  }
-  return { compatible: true, reason: null, file: obj, migrated: false }
-}
-
-// ── Portable export code ─────────────────────────────────────────────────────
-// Shareable single-line form: 'arpg3d.v1.<base64url(json)>'.
-// btoa/atob + TextEncoder are available in both browsers and Node >= 16.
-
-const toBase64Url = (str) => {
-  const bytes = new TextEncoder().encode(str)
-  let bin = ''
-  const CHUNK = 0x8000
-  for (let i = 0; i < bytes.length; i += CHUNK) {
-    bin += String.fromCharCode(...bytes.subarray(i, i + CHUNK))
-  }
-  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
-}
-
-const fromBase64Url = (b64url) => {
-  const b64 = b64url.replace(/-/g, '+').replace(/_/g, '/')
-  const bin = atob(b64 + '='.repeat((4 - (b64.length % 4)) % 4))
-  const bytes = Uint8Array.from(bin, c => c.charCodeAt(0))
-  return new TextDecoder().decode(bytes)
-}
-
-/**
- * @param {object} saveFile
- * @returns {string} portable code, e.g. 'arpg3d.v1.eyJ...'
- */
-export const encodeSaveCode = (saveFile) =>
-  `${GAME_ID}.v${saveFile.v}.${toBase64Url(JSON.stringify(saveFile))}`
-
-/**
- * Decode a portable code back to a (raw, unvalidated) save file object.
- * Throws on malformed input; callers run checkCompatibility() on the result.
- *
- * @param {string} code
- * @returns {object}
- */
-export const decodeSaveCode = (code) => {
-  const trimmed = code.trim()
-  const match = trimmed.match(new RegExp(`^${GAME_ID}\\.v(\\d+)\\.([A-Za-z0-9_-]+)$`))
-  if (!match) throw new Error(`not a ${GAME_ID} save code`)
-  return JSON.parse(fromBase64Url(match[2]))
-}
-
-/**
- * Accept either raw save-file JSON or a portable code (import UX helper).
- * @param {string} text
- * @returns {object} raw save file object (unvalidated)
- */
-export const parseImportText = (text) => {
-  const trimmed = text.trim()
-  if (trimmed.startsWith('{')) return JSON.parse(trimmed)
-  return decodeSaveCode(trimmed)
-}
+export const ARPG3D_SAVE_SPEC = Object.freeze({
+  gameId: GAME_ID,
+  schemaVersion: SAVE_SCHEMA_VERSION,
+  migrations: MIGRATIONS,
+  buildBody,
+  validateBody: validateSimBody,
+})

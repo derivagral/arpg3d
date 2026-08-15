@@ -8,11 +8,10 @@ import assert from 'node:assert/strict'
 import { createState, tick } from './engine.js'
 import { createProfile, BASE_POLICIES } from './profile.js'
 import { AFFIX_POOL } from './affixes.js'
+import { SAVE_SCHEMA_VERSION, GAME_ID, serializeSim, hydrateSim } from './save.js'
+// The envelope machinery is generic now and is composed per game; ARPG3D's
+// binding must behave exactly as it did when it lived in this module.
 import {
-  SAVE_SCHEMA_VERSION,
-  GAME_ID,
-  serializeSim,
-  hydrateSim,
   createSaveFile,
   updateSaveFile,
   validateSaveFile,
@@ -20,7 +19,7 @@ import {
   encodeSaveCode,
   decodeSaveCode,
   parseImportText,
-} from './save.js'
+} from '../src/games/arpg3d/save.js'
 
 // Advance a fresh run far enough to accumulate affixes, pity, and rng churn.
 const runFor = (seed, ticks) => {
@@ -216,8 +215,9 @@ test('the profile round-trips through create/update and reaches slot meta', () =
   const kept = updateSaveFile(file, state)
   assert.deepEqual(kept.profile, file.profile)
 
-  // Passing one overwrites it
-  const bumped = updateSaveFile(file, state, Date.now(), { ...profile, echoes: 300 })
+  // Passing one overwrites it. The fourth argument is an options bag now that
+  // the envelope is generic — the body decides what it does with `profile`.
+  const bumped = updateSaveFile(file, state, Date.now(), { profile: { ...profile, echoes: 300 } })
   assert.equal(bumped.profile.echoes, 300)
   assert.equal(bumped.meta.echoes, 300)
 })

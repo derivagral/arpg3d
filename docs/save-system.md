@@ -1,21 +1,37 @@
 # Save System
 
-Local-first state storage: save slots persist in `localStorage`, with third-party
-export as raw JSON or a portable single-line code. No accounts, no server — a
-login flow can layer on later without changing the format.
+Local-first state storage, keyed to the player's identity subject, with
+third-party export as raw JSON or a portable single-line code. Saves live on an
+injectable async backend, so moving them to IndexedDB or a server is a backend
+swap rather than a rewrite. See `docs/identity.md` for who a player is and why
+saves are keyed on a DID rather than a handle.
 
 ## Layers
 
 ```
-sim/save.js              FORMAT (pure, Node-importable, tested)
-  serializeSim/hydrateSim     SimState ↔ plain snapshot
-  createSaveFile/updateSaveFile  versioned envelope around a snapshot
+src/storage/saveFormat.js  ENVELOPE (generic, reusable by any game)
+  createSaveFormat(spec)      binds the machinery below to one game
+  createSaveFile/updateSaveFile  versioned envelope around a body
   validateSaveFile/checkCompatibility/migrateSaveFile  schema gatekeeping
   encodeSaveCode/decodeSaveCode/parseImportText  portable export codes
 
-src/storage/saveStore.js STORAGE (localStorage CRUD, injectable backend)
+sim/save.js              ARPG3D's BODY (pure, Node-importable, tested)
+  serializeSim/hydrateSim     SimState ↔ plain snapshot
+  buildMeta                   denormalized summary for slot lists
+  MIGRATIONS                  step migrations, keyed by version-from
+  ARPG3D_SAVE_SPEC            what createSaveFormat() needs
+
+src/games/arpg3d/save.js COMPOSITION
+  arpg3dSaveFormat = createSaveFormat(ARPG3D_SAVE_SPEC)
+
+src/storage/saveStore.js STORAGE (slot CRUD, async, serialized)
   list/get/create/update/rename/remove
   importSaveFile/exportJson/exportCode
+  updateSync — synchronous unload flush, where the backend supports it
+
+src/storage/backends/    BYTES (async read/write/remove)
+  localStorage.js  default; can flush synchronously on pagehide, ~5MB cap
+  indexedDb.js     far larger, never blocks the main thread, NO unload flush
 
 src/ui/mainMenu.js       UI (pre-Babylon DOM overlay)
   slot list, New Run (name + optional seed), Play/Rename/Delete,
@@ -109,13 +125,38 @@ format. Imports always get a fresh slot id.
 
 ## Storage layout
 
-Single localStorage key `arpg3d:saves:v1` holding `{ v, saves: { [id]: SaveFile } }`.
-Saves are ~1-5 KB each; atomic read-modify-write of one blob beats per-slot keys
-at this size. A corrupt envelope is backed up to `arpg3d:saves:v1:corrupt-backup`
-rather than destroyed, and the store starts empty.
+One key per player: `arpg3d:saves:v1:<url-encoded subject>`, holding
+`{ v, saves: { [id]: SaveFile } }`. Saves are ~1-5 KB each; read-modify-write of
+one blob beats per-slot keys at this size — though per-slot keys are the change
+to make before this goes over a network, since today every write ships every
+slot. A corrupt envelope is backed up to `<key>:corrupt-backup` rather than
+destroyed, and the store starts empty.
 
-The backend is injectable (`createSaveStore(storage)`) — tests run against a
-Map; a future remote backend implements the same three-method surface.
+Saves written before identity existed are adopted once, into the guest's
+namespace, by `adoptLegacySaves`. See `docs/identity.md` for that and for the
+guest→account claim flow.
+
+The backend is injectable (`createSaveStore({ backend, subject, format })`) and
+every method is async. `localStorage` is the default; `indexedDb` lifts the 5MB
+cap at the cost of the synchronous unload flush, and
+`src/storage/chooseBackend.js` switches between them (copying, never moving).
+
+Because writes are async, operations serialize on a per-store chain — the
+envelope holds every slot, so an interleaved read-modify-write would lose a
+whole save rather than a field.
+
+## Reusing this for another game
+
+`createSaveFormat(spec)` gives a new game the whole envelope — magic tag,
+versioning, migrations, compatibility verdicts, export codes — without touching
+`sim/`, which is ARPG3D's own logic. Supply `gameId`, `schemaVersion`,
+`migrations`, `buildBody`, and optionally `validateBody`, then pass the result
+to `createSaveStore({ format })`. The game id determines the keyspace, so two
+games can never collide, and each rejects the other's files on import.
+
+`src/games/arpg3d/save.test.js` pins this down from both directions: a real
+export code produced by an older build still decodes, loads, and re-encodes
+byte-for-byte identically, and a second format gets its own tag and keyspace.
 
 ## Autosave cadence
 

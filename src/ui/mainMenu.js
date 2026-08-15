@@ -16,17 +16,28 @@
  */
 
 import { createState } from '../../sim/engine.js'
-import { hydrateSim, checkCompatibility, parseImportText } from '../../sim/save.js'
+import { hydrateSim } from '../../sim/save.js'
+import { checkCompatibility, parseImportText } from '../games/arpg3d/save.js'
 import { runMetaFor, hydrateProfile } from '../../sim/profile.js'
 
 /**
  * @param {{ store: ReturnType<import('../storage/saveStore.js').createSaveStore>,
+ *           identity?: object,
+ *           claim?: { count: number, accept: () => object, decline: () => void } | null,
  *           onStart: (args: { slotId: string, simState: object }) => void }} opts
  */
-export const showMainMenu = ({ store, onStart }) => {
+export const showMainMenu = ({ store, identity = null, claim = null, onStart }) => {
+  // The menu is a singleton. The shell re-shows it whenever it returns from a
+  // game or the identity changes, and stacking a second copy on top of a live
+  // one would leave the buried menu's handlers wired to a stale save store.
+  document.getElementById('mainMenu')?.remove()
+
   const root = document.createElement('div')
   root.id = 'mainMenu'
   document.body.appendChild(root)
+
+  // Cleared once answered, so the banner does not survive its own re-render.
+  let activeClaim = claim
 
   let statusTimer = null
   const setStatus = (msg, isError = false) => {
@@ -43,8 +54,8 @@ export const showMainMenu = ({ store, onStart }) => {
     onStart({ slotId, simState })
   }
 
-  const playSlot = (id) => {
-    const file = store.get(id)
+  const playSlot = async (id) => {
+    const file = await store.get(id)
     if (!file) return setStatus('Save not found.', true)
     const { compatible, reason, file: usable } = checkCompatibility(file)
     if (!compatible) return setStatus(`Incompatible save: ${reason}`, true)
@@ -61,29 +72,29 @@ export const showMainMenu = ({ store, onStart }) => {
     start(id, sim)
   }
 
-  const newRun = () => {
+  const newRun = async () => {
     const name = root.querySelector('#newRunName').value.trim() || defaultRunName()
     const seedText = root.querySelector('#newRunSeed').value.trim()
     const seed = seedText === '' ? Date.now() : Number(seedText)
     if (!Number.isFinite(seed)) return setStatus('Seed must be a number.', true)
 
     const sim = createState(seed)
-    const file = store.create(name, sim)
+    const file = await store.create(name, sim)
     start(file.id, sim)
   }
 
-  const importText = (text) => {
+  const importText = async (text) => {
     try {
-      const imported = store.importSaveFile(parseImportText(text))
-      render()  // re-render first — it rebuilds the status element
+      const imported = await store.importSaveFile(parseImportText(text))
+      await render()  // re-render first — it rebuilds the status element
       setStatus(`Imported "${imported.name}".`)
     } catch (e) {
       setStatus(`Import failed: ${e.message}`, true)
     }
   }
 
-  const exportJson = (id, name) => {
-    const json = store.exportJson(id)
+  const exportJson = async (id, name) => {
+    const json = await store.exportJson(id)
     if (!json) return setStatus('Save not found.', true)
     const blob = new Blob([json], { type: 'application/json' })
     const a = document.createElement('a')
@@ -94,7 +105,7 @@ export const showMainMenu = ({ store, onStart }) => {
   }
 
   const copyCode = async (id) => {
-    const code = store.exportCode(id)
+    const code = await store.exportCode(id)
     if (!code) return setStatus('Save not found.', true)
     try {
       await navigator.clipboard.writeText(code)
@@ -104,12 +115,13 @@ export const showMainMenu = ({ store, onStart }) => {
     }
   }
 
-  const render = () => {
-    const slots = store.list()
+  const render = async () => {
+    const slots = await store.list()
     root.innerHTML = `
       <div class="menu-panel">
         <h1>ARPG3D</h1>
         <div class="menu-status"></div>
+        ${renderClaim(activeClaim)}
 
         <div class="menu-section">
           <h2>New Run</h2>
@@ -141,6 +153,27 @@ export const showMainMenu = ({ store, onStart }) => {
       </div>
     `
 
+    if (activeClaim) {
+      root.querySelector('#claimAccept').addEventListener('click', async () => {
+        const { claimed, skipped } = await activeClaim.accept()
+        // Answer first, then re-render: the copied saves have to show up in
+        // the list, and the banner must not come back. setStatus runs after
+        // render() because render() rebuilds the status element.
+        activeClaim = null
+        await render()
+        setStatus(
+          `Copied ${claimed} guest save${claimed === 1 ? '' : 's'} to your account.` +
+          (skipped.length ? ` ${skipped.length} could not be copied.` : ''),
+          skipped.length > 0
+        )
+      })
+      root.querySelector('#claimDecline').addEventListener('click', async () => {
+        await activeClaim.decline()
+        activeClaim = null
+        await render()
+      })
+    }
+
     root.querySelector('#newRunBtn').addEventListener('click', newRun)
     root.querySelector('#newRunName').addEventListener('keydown', e => { if (e.key === 'Enter') newRun() })
     root.querySelector('#newRunSeed').addEventListener('keydown', e => { if (e.key === 'Enter') newRun() })
@@ -155,26 +188,50 @@ export const showMainMenu = ({ store, onStart }) => {
     })
 
     root.querySelectorAll('[data-action]').forEach(btn => {
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', async () => {
         const { action, id, name } = btn.dataset
-        if (action === 'play') playSlot(id)
-        if (action === 'json') exportJson(id, name)
-        if (action === 'code') copyCode(id)
+        if (action === 'play') await playSlot(id)
+        if (action === 'json') await exportJson(id, name)
+        if (action === 'code') await copyCode(id)
         if (action === 'rename') {
           const next = window.prompt('Rename save:', name)
-          if (next && next.trim()) { store.rename(id, next.trim()); render() }
+          if (next && next.trim()) { await store.rename(id, next.trim()); await render() }
         }
         if (action === 'delete') {
           if (window.confirm(`Delete "${name}"? This cannot be undone.`)) {
-            store.remove(id)
-            render()
+            await store.remove(id)
+            await render()
           }
         }
       })
     })
   }
 
-  render()
+  // Returned so the shell can await the first paint. Everything below the
+  // initial render is event-driven, so nothing else needs to wait on it.
+  return render()
+}
+
+/**
+ * The one-time "bring your guest saves with you?" offer, shown after a first
+ * sign-in. Worded to make clear this is a copy: the guest saves stay where
+ * they are, so declining costs nothing and signing out gets you back to them.
+ */
+const renderClaim = (claim) => {
+  if (!claim) return ''
+  return `
+    <div class="menu-claim">
+      <div class="claim-text">
+        You have ${claim.count} save${claim.count === 1 ? '' : 's'} from playing as a guest.
+        Copy ${claim.count === 1 ? 'it' : 'them'} to this account? Your guest saves stay
+        where they are either way.
+      </div>
+      <div class="claim-actions">
+        <button id="claimAccept" class="menu-btn primary">Copy to my account</button>
+        <button id="claimDecline" class="menu-btn">No thanks</button>
+      </div>
+    </div>
+  `
 }
 
 const renderSlot = (slot) => {
