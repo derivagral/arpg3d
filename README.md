@@ -133,6 +133,11 @@ npm run dev       # then browse http://127.0.0.1:5173 — NOT localhost, see bel
 SITE_BASE=/arpg3d/ SITE_ORIGIN=https://<user>.github.io npm run build
 ```
 
+Pushing to `main` deploys to GitHub Pages via `.github/workflows/deploy.yml`,
+which derives those two values from the repo and fails the deploy if the
+generated `client_id` or callback file would be wrong. It needs Pages set to
+build from "GitHub Actions" in repo settings once, by hand.
+
 Dev must be browsed at `127.0.0.1`: atproto's loopback `client_id` requires the
 redirect to land there, and `localhost` is a different origin whose session is
 invisible to the callback. See `docs/identity.md` for the full contract, the

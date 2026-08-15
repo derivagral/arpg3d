@@ -118,6 +118,15 @@ Identity-only, public client, no backend. It runs on GitHub Pages as-is.
    ```
 
    Both default to a root-served site.
+   `.github/workflows/deploy.yml` derives them from the repository (handling
+   the `<owner>.github.io` user-site case) and then **asserts** that the built
+   `client_id` equals the document's own URL and that the callback file exists,
+   failing the deploy rather than publishing a site whose sign-in is quietly
+   broken. Using a custom domain means editing `SITE_ORIGIN` in that workflow
+   and setting the base to `/`.
+
+   Deploying requires one manual step that cannot be done from code: repo
+   **Settings → Pages → Source → "GitHub Actions"**.
 
 3. **Local dev must be browsed at `127.0.0.1`, not `localhost`.** The loopback
    `client_id` form uses the literal host `localhost`, but the redirect URI must

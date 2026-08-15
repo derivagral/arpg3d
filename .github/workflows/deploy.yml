@@ -1,0 +1,102 @@
+name: Deploy to GitHub Pages
+
+# One-time manual step before this works: repo Settings → Pages → Source →
+# "GitHub Actions". Until that is set, this workflow builds fine and the
+# deploy step fails.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never let two deploys race; queue instead of cancelling, so a superseded
+# run still finishes rather than leaving Pages on a half-published state.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Gate the deploy on tests. A broken save codec reaching production
+      # costs players their runs.
+      - run: npm test
+
+      # ── Resolve the deploy URL ────────────────────────────────────────────
+      # This is not cosmetic. SITE_ORIGIN and SITE_BASE are baked into
+      # client-metadata.json, and atproto authorization servers fetch that
+      # document at the exact URL they were handed as client_id. A wrong
+      # value does not degrade — it fails sign-in outright.
+      #
+      # Values come in through `env:` rather than ${{ }} interpolation inside
+      # the script, so a repository or owner name can never be shell-injected.
+      - name: Resolve site origin and base
+        env:
+          OWNER: ${{ github.repository_owner }}
+          REPO: ${{ github.event.repository.name }}
+        run: |
+          set -euo pipefail
+          owner_lc=$(printf '%s' "$OWNER" | tr '[:upper:]' '[:lower:]')
+
+          # A repo named <owner>.github.io is a USER site, served from the
+          # domain root. Everything else is a project site under /<repo>/.
+          if [ "$REPO" = "$owner_lc.github.io" ]; then
+            base="/"
+          else
+            base="/$REPO/"
+          fi
+
+          # Using a custom domain? Replace this with that domain and set base
+          # to "/" — Pages serves a CNAME'd site from the root.
+          echo "SITE_ORIGIN=https://$owner_lc.github.io" >> "$GITHUB_ENV"
+          echo "SITE_BASE=$base" >> "$GITHUB_ENV"
+
+      - name: Build
+        run: npm run build
+
+      # Fail loudly here rather than shipping a site whose sign-in is quietly
+      # broken. The callback must exist as a real file (GitHub Pages has no
+      # SPA rewrite), and client_id must equal the document's own URL.
+      - name: Verify OAuth deploy artifacts
+        run: |
+          set -euo pipefail
+          test -f dist/oauth/callback/index.html \
+            || { echo "::error::dist/oauth/callback/index.html missing — redirect_uri would 404"; exit 1; }
+
+          expected="${SITE_ORIGIN}${SITE_BASE}client-metadata.json"
+          actual=$(node -p "require('./dist/client-metadata.json').client_id")
+          [ "$actual" = "$expected" ] \
+            || { echo "::error::client_id is '$actual', expected '$expected'"; exit 1; }
+
+          redirect=$(node -p "require('./dist/client-metadata.json').redirect_uris[0]")
+          echo "client_id:    $actual"
+          echo "redirect_uri: $redirect"
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
