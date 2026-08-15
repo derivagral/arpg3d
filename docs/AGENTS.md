@@ -23,6 +23,8 @@ Each subsystem is designed so its context fits in a single focused session.
 | New zone type                    | docs/sim/engine.md, docs/sim/gate.md             | sim/engine.js, sim/gate.js                |
 | Writing tests for sim            | docs/sim/overview.md                             | sim/**/*.js (import in Node, no browser)  |
 | Save format / persistence / menu | docs/save-system.md, docs/identity.md            | sim/save.js, src/storage/saveStore.js, src/ui/mainMenu.js |
+| Reusing the save envelope elsewhere | docs/save-system.md                            | src/storage/saveFormat.js, src/games/arpg3d/save.js |
+| Storage backends (localStorage/IDB) | docs/save-system.md                             | src/storage/backends/**, src/storage/chooseBackend.js |
 | Identity / login / auth methods  | docs/identity.md                                 | src/identity/**, src/ui/identityChip.js, src/ui/signInPanel.js |
 | Shell / game-host contract       | docs/identity.md                                 | src/host/**, src/games/registry.js, src/main.js |
 | Adding a new game module         | docs/identity.md                                 | src/games/*/manifest.js, src/games/*/index.js |
@@ -50,3 +52,9 @@ Each subsystem is designed so its context fits in a single focused session.
     handle. A handle can change hands; a subject cannot.
 12. `src/identity/` has zero dependencies on game code, storage, or any auth
     library beyond its own providers — it must stay importable in Node.
+13. `sim/` must never import from `src/`. The reusable half of the save codec
+    lives in `src/storage/saveFormat.js` precisely so a second game can use it
+    without reaching into ARPG3D's sim — `sim/save.js` supplies only the spec.
+14. Save-format changes must keep old saves loading.
+    `src/games/arpg3d/fixtures/pre-refactor-v2.code.txt` is a frozen export code
+    from a real build; regenerating it to make a test pass defeats its purpose.

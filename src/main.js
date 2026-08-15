@@ -24,7 +24,7 @@
 import { createShellIdentity } from './identity/boot.js'
 import { isAnon } from './identity/identity.js'
 import { createSaveStore, adoptLegacySaves } from './storage/saveStore.js'
-import { createLocalStorageBackend } from './storage/backends/localStorage.js'
+import { chooseBackend } from './storage/chooseBackend.js'
 import { claimOffer, claimSaves, declineClaim } from './storage/claim.js'
 import { createHost } from './host/host.js'
 import { findGame } from './games/registry.js'
@@ -43,16 +43,21 @@ window.addEventListener('DOMContentLoaded', () => {
 
 async function boot() {
   const storage = globalThis.localStorage
-  // Saves go through an async backend so the store underneath can become
-  // IndexedDB or an HTTP API without touching a call site. Identity keeps
-  // using localStorage directly — it holds two small strings, and it has to
-  // be readable before anything async has had a chance to run.
-  const backend = createLocalStorageBackend({ storage })
   const identityManager = createShellIdentity({ storage })
 
   // Always yields an Identity — a guest one if nothing else resolves. No
   // caller below this line ever has to handle "signed out".
   const identity = await identityManager.resolve()
+
+  // Saves go through an async backend, so the bytes underneath can become
+  // IndexedDB or an HTTP API without touching a call site. Identity itself
+  // keeps using localStorage directly — it holds two small strings and has to
+  // be readable before anything async has had a chance to run.
+  //
+  // Switch to 'indexeddb' for a much larger budget and no main-thread writes,
+  // at the cost of the synchronous flush on tab close. Saves are copied, not
+  // moved, so the switch is reversible. See src/storage/chooseBackend.js.
+  const { backend } = await chooseBackend({ kind: 'local', storage, subject: identity.subject })
 
   // Saves written before this build knew about subjects belong to whoever is
   // sitting at this browser, which is the guest. Adopt them once, so an

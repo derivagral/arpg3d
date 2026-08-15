@@ -8,6 +8,7 @@
     "test": "node --test \"sim/**/*.test.js\" \"src/**/*.test.js\""
   },
   "devDependencies": {
+    "fake-indexeddb": "^6.2.5",
     "vite": "^5.0.0"
   },
   "dependencies": {

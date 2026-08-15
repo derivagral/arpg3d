@@ -37,27 +37,27 @@
  * write every wave clear) and correctness here is not optional.
  */
 
-import {
-  createSaveFile,
-  updateSaveFile,
-  checkCompatibility,
-  encodeSaveCode,
-  newSaveId,
-  SAVE_SCHEMA_VERSION,
-  GAME_ID,
-} from '../../sim/save.js'
 import { hydrateProfile } from '../../sim/profile.js'
 import { subjectKey } from '../identity/identity.js'
 import { createLocalStorageBackend } from './backends/localStorage.js'
+import { arpg3dSaveFormat } from '../games/arpg3d/save.js'
+
+/** Default game id, kept as a constant so the legacy keys stay byte-identical. */
+export const GAME_ID = arpg3dSaveFormat.gameId
 
 export const STORAGE_KEY = `${GAME_ID}:saves:v1`
 
 /** Marks the legacy envelope as already taken over, so it is adopted once. */
 export const ADOPTED_KEY = `${STORAGE_KEY}:adopted-by`
 
+/** Envelope key for one game. */
+export const baseKeyFor = (gameId = GAME_ID) => `${gameId}:saves:v1`
+
 /** Where a given subject's saves live. */
-export const storageKeyFor = (subject) =>
-  subject ? `${STORAGE_KEY}:${subjectKey(subject)}` : STORAGE_KEY
+export const storageKeyFor = (subject, gameId = GAME_ID) => {
+  const base = baseKeyFor(gameId)
+  return subject ? `${base}:${subjectKey(subject)}` : base
+}
 
 /**
  * Take over pre-identity saves (written before this module knew about
@@ -93,12 +93,29 @@ export const adoptLegacySaves = async (backend, subject) => {
  *   omitting it targets the un-namespaced legacy key, which only the adoption
  *   path and its tests should do.
  */
-export const createSaveStore = ({ backend, storage, subject = null } = {}) => {
+export const createSaveStore = ({
+  backend,
+  storage,
+  subject = null,
+  format = arpg3dSaveFormat,
+} = {}) => {
   const store = backend ?? createLocalStorageBackend(
     storage ? { storage } : undefined
   )
 
-  const key = storageKeyFor(subject)
+  // The codec decides the game tag, the schema version and the migrations —
+  // and therefore the keyspace. A second game passes its own and gets a fully
+  // separate set of slots with none of this file duplicated.
+  const {
+    createSaveFile,
+    updateSaveFile,
+    checkCompatibility,
+    encodeSaveCode,
+    newSaveId,
+    schemaVersion: SAVE_SCHEMA_VERSION,
+  } = format
+
+  const key = storageKeyFor(subject, format.gameId)
 
   // Serialization chain. Every operation runs after the previous one settles,
   // so a read-modify-write can never interleave with another.
@@ -193,7 +210,7 @@ export const createSaveStore = ({ backend, storage, subject = null } = {}) => {
         const envelope = await read()
         const existing = envelope.saves[id]
         if (!existing) return null
-        const file = updateSaveFile(existing, simState, Date.now(), profile)
+        const file = updateSaveFile(existing, simState, Date.now(), { profile })
         envelope.saves[id] = file
         await write(envelope)
         return file
@@ -223,7 +240,7 @@ export const createSaveStore = ({ backend, storage, subject = null } = {}) => {
         const envelope = parsed?.saves ? parsed : { v: SAVE_SCHEMA_VERSION, saves: {} }
         const existing = envelope.saves[id]
         if (!existing) return null
-        const file = updateSaveFile(existing, simState, Date.now(), profile)
+        const file = updateSaveFile(existing, simState, Date.now(), { profile })
         envelope.saves[id] = file
         store.writeSync(key, JSON.stringify(envelope))
         return file

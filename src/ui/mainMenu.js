@@ -16,7 +16,8 @@
  */
 
 import { createState } from '../../sim/engine.js'
-import { hydrateSim, checkCompatibility, parseImportText } from '../../sim/save.js'
+import { hydrateSim } from '../../sim/save.js'
+import { checkCompatibility, parseImportText } from '../games/arpg3d/save.js'
 import { runMetaFor, hydrateProfile } from '../../sim/profile.js'
 
 /**

@@ -6,7 +6,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
 import { createState, tick } from '../../sim/engine.js'
-import { encodeSaveCode, SAVE_SCHEMA_VERSION } from '../../sim/save.js'
+import { encodeSaveCode, SAVE_SCHEMA_VERSION } from '../games/arpg3d/save.js'
 import { createSaveStore, STORAGE_KEY } from './saveStore.js'
 
 const mockStorage = () => {
