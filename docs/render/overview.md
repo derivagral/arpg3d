@@ -7,26 +7,41 @@ It must never write back into the sim.
 
 ## Current architecture (coexistence mode)
 ```
-src/main.js
-  ├── createState(seed)         → simState (primary source of truth)
-  ├── new Game(engine, canvas)  → game (legacy render layer, still ticking)
-  └── scene.registerBeforeRender:
-        simState = tick(simState, deltaMs, input)   ← sim advances first
-        syncSimToRender(simState, game)             ← push key values into legacy layer
-        game's own beforeRender callback            ← legacy loop runs second
+src/games/arpg3d/index.js
+  ├── createState(seed, runMeta) → simState (primary source of truth)
+  ├── new Game(engine, canvas)   → game (legacy render layer, still ticking)
+  │     └── registers its beforeRender FIRST, so it runs first
+  └── scene.registerBeforeRender:            ← registered second, runs second
+        simState = tick(simState, deltaMs, input)
+        syncSimToRender(simState, game)      ← push sim values into legacy layer
 ```
 
-## syncSimToRender (src/main.js)
-Currently syncs **nothing** — it is an empty stub. The sim runs in parallel
-and is surfaced via `window.__sim()`; the legacy layer still owns its own
-player, enemies, and combat independently.
+Registration order is load-bearing now that position crosses over: the legacy
+loop reads the player mesh (camera follow, auto-attack, contact damage) using
+the position this tick wrote on the *previous* frame. One frame of lag, and
+consistent within any single frame — which is the part that matters.
 
-**Not yet synced** (legacy layer handles these independently):
+## syncSimToRender (src/games/arpg3d/index.js)
+Syncs **player position**, and nothing else yet.
+
+Inside the combat zone the sim owns where the player is, and the mesh follows
+it via `Player.driveTo()`. This was an empty stub until recently, which meant
+the character on screen was the legacy WASD player while the movement policies
+steered a second, invisible one — the ladder decided a run's depth, echoes and
+loot with no visible expression at all. See docs/sim/movement.md for the
+ownership table, the screen convention (`W` is `+z`), and the two deliberate
+visual artifacts (wave recentring reads as a teleport; the arena disc is
+smaller than the ground).
+
+**Not yet synced** (legacy layer still owns these independently):
 - Player hp / stats
-- Player and enemy positions / mesh lifecycle
+- Enemy positions / mesh lifecycle
 - Projectiles
 - Pickups
 - Wave/spawn logic
+
+Do **not** cross-write health here: the legacy `checkGameOver()` would fire
+(alert + page reload) the moment the sim player died.
 
 The goal is to progressively expand syncSimToRender as each legacy system is ported
 to the sim, then remove the legacy counterpart. Until then, gameplay rules
@@ -43,6 +58,11 @@ Behaviour that exists in both layers today, and must be changed in both:
 | Enemy/player balance stats | `ENEMY_TEMPLATES`, `BASE_PLAYER` | `CONFIG.enemies.types`, `CONFIG.player` |
 | Container sizes | `INVENTORY_SIZE`, `STASH_SIZE` | `CONFIG.inventory` |
 | Arena size | `ARENA_RADIUS` (23) | `areaManager` `groundSize` (69 / 46) |
+
+**Player position is no longer mirrored** — in the combat zone the sim is the
+sole owner and the mesh follows it. Home base still moves the mesh directly,
+because no run ticks there. The arena disc (23) sits well inside the combat
+ground (69 wide), so the sim's clamp is always the binding one.
 
 **Items are no longer mirrored** — the sim is the sole source, and the legacy
 item system (`js/items.js`, `js/inventory.js`, the `#inventoryScreen` markup
@@ -122,10 +142,20 @@ as channels when that content exists.
 
 ## Input flow
 Manual movement is an **input to the sim**, not a render-layer behaviour:
-`src/main.js` collects held WASD/arrow keys into `input.move` (`{x, z}`),
-which overrides the active `input.movePolicy` for that tick. This keeps
-manual and idle play on one code path and one balance model, and keeps runs
-deterministic (record the input stream → replay). See docs/sim/movement.md.
+`src/games/arpg3d/index.js` collects held WASD/arrow keys into `input.move`
+(`{x, z}`), which overrides the active `input.movePolicy` for that tick. This
+keeps manual and idle play on one code path and one balance model, and keeps
+runs deterministic (record the input stream → replay).
+
+`js/player.js` keeps its own key handling for **home base only**, where no run
+ticks and the keyboard owns position outright. Both mappings use the same
+screen convention (W is `+z`, toward the far side of the map); they were
+inverted relative to each other until the sim's player started being drawn.
+See docs/sim/movement.md.
+
+The movement policy is reached through `game.movement` — `current()`,
+`list()`, `set()` — the one validated seam a future selector UI would bind to.
+`set()` refuses a locked policy with a reason rather than appearing to work.
 
 ## Debug surface
 ```js
@@ -133,8 +163,8 @@ window.__sim()            // live SimState snapshot (dev only)
 window.__pickGate(idx)    // manually resolve current gate
 window.__rerollGate()     // spend gold to reroll gate options
 window.__setAutopilot(false)  // disable autopilot to test manual play
-window.__setMovePolicy(n)  // 'hold' | 'center' | 'patrol' | 'kite'
-window.__movePolicies()   // list available policies
+window.__setMovePolicy(n)  // 'hold' | 'center' | 'patrol' | 'kite' (persists)
+window.__movePolicies()   // the ladder: labels, unlock state, selection
 window.__newRun(seed?)    // restart sim with optional seed
 window.__save()           // force-save the active slot
 window.__store            // save store (list/get/remove/...)

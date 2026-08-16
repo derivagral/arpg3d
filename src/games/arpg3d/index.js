@@ -26,7 +26,7 @@
  */
 
 import { createState, tick, isRunOver } from '../../../sim/engine.js'
-import { MOVE_POLICIES } from '../../../sim/movement.js'
+import { POLICY_META } from '../../../sim/movement.js'
 import {
   createInventory,
   addItems,
@@ -47,6 +47,8 @@ import {
   runMetaFor,
   purchaseUpgrade,
   unlockedPolicies,
+  activePolicy,
+  setMovePolicy,
   UPGRADES,
   ACHIEVEMENTS,
   upgradeCost,
@@ -211,6 +213,10 @@ export async function mount(container, host) {
       refreshItemNotice()
     } else {
       bankRun('returned home')
+      // No run ticks at home base, so nothing would be pushing position in.
+      // Hand the mesh back to the keyboard or the player would be frozen at
+      // whatever the sim last said, unable to reach the portal or the stash.
+      game.player.releaseDrive()
     }
     if (stashPanel.refresh) stashPanel.refresh()
   }
@@ -228,17 +234,63 @@ export async function mount(container, host) {
     autopilot: true,    // autopilot on by default
     gateReroll: false,  // single-frame: spend gold to reroll gate options
     move: null,         // { x, z } manual movement; null = use movePolicy
-    movePolicy: 'center',
+    // The standing order, restored from the profile and clamped to what this
+    // character has unlocked. Unlike gear it is NOT snapshotted into the run:
+    // an idle worker's orders can change while it works.
+    movePolicy: activePolicy(profile),
   }
+
+  // ── Movement controls ─────────────────────────────────────────────────────
+  // One validated seam for reading and changing the standing order, shared by
+  // the dev console today and by whatever selector UI grows on top of it. It
+  // is installed on the game instance (the same way openStashPanel is) so a
+  // future HUD widget can drive it without this module importing the widget.
+  //
+  // Deliberately not a bare setter: choosing a locked policy has to fail
+  // loudly here, because the engine's own clamp is silent by design.
+  const movement = {
+    /** The active standing order. */
+    current: () => pendingInput.movePolicy,
+    /** Every policy with its label, unlock state and whether it's selected. */
+    list: () => {
+      const unlocked = unlockedPolicies(profile)
+      // What the LIVE run will actually honour — a run snapshots its policy
+      // list at creation, so an unlock earned mid-run applies to the next one.
+      const thisRun = simState.runMeta?.policies ?? unlocked
+      return POLICY_META.map(p => ({
+        ...p,
+        unlocked: unlocked.includes(p.id),
+        activeThisRun: thisRun.includes(p.id),
+        selected: p.id === pendingInput.movePolicy,
+      }))
+    },
+    /** @returns {{ set: boolean, reason: string|null }} */
+    set: (name) => {
+      const res = setMovePolicy(profile, name)
+      if (!res.set) return { set: false, reason: res.reason }
+      profile = res.profile
+      pendingInput.movePolicy = name
+      persist()
+      return { set: true, reason: null }
+    },
+  }
+  game.movement = movement
 
   // Manual movement capability: WASD/arrows feed the sim as an input vector,
   // overriding the idle policy while keys are held. Manual play is not a
   // separate code path — same tick, same balance, still deterministic.
+  //
+  // Screen convention: the camera sits at -z looking toward +z, so "up the
+  // screen" is +z and W must be +z. This used to be inverted, which was
+  // invisible for exactly as long as the sim's player was never drawn — the
+  // moment the mesh follows sim position (syncSimToRender, below), an
+  // inverted W walks the character toward the camera while the same key at
+  // home base walks it away. js/player.js states the same convention.
   const held = new Set()
   const bind = settings?.keybinds ?? {}
   const MOVE_KEYS = {
-    [bind.up ?? 'KeyW']: [0, -1], ArrowUp: [0, -1],
-    [bind.down ?? 'KeyS']: [0, 1],  ArrowDown: [0, 1],
+    [bind.up ?? 'KeyW']: [0, 1],   ArrowUp: [0, 1],
+    [bind.down ?? 'KeyS']: [0, -1], ArrowDown: [0, -1],
     [bind.left ?? 'KeyA']: [-1, 0], ArrowLeft: [-1, 0],
     [bind.right ?? 'KeyD']: [1, 0], ArrowRight: [1, 0],
   }
@@ -297,8 +349,12 @@ export async function mount(container, host) {
 
   // ── Inject sim tick before each Babylon render ────────────────────────────
   // We use registerBeforeRender on the game's already-running scene loop.
-  // The legacy Game.startGameLoop() already registered its own beforeRender.
-  // This one runs first (registration order). Both coexist safely.
+  // Game's constructor called startGameLoop(), so the legacy callback was
+  // registered first and runs first; this one runs after it. That ordering is
+  // load-bearing now that position crosses over: the legacy loop reads the
+  // player mesh (camera follow, auto-attack, contact damage) using the
+  // position this tick wrote on the *previous* frame — one frame of lag at
+  // 60fps, and consistent within any single frame, which is what matters.
   game.scene.registerBeforeRender(() => {
     if (game.state.paused) return
     // The sim run IS the combat zone. At home base there is no run to advance,
@@ -359,19 +415,23 @@ export async function mount(container, host) {
     window.__rerollGate  = () => { pendingInput.gateReroll = true }
     window.__setAutopilot = (on) => { pendingInput.autopilot = on }
     window.__setMovePolicy = (name) => {
-      pendingInput.movePolicy = name
-      const allowed = simState.runMeta?.policies ?? []
-      if (!allowed.includes(name)) {
-        console.warn(`[policy] '${name}' is not unlocked for this run — the sim will ignore it.`,
-          `Unlocked: ${allowed.join(', ')}`)
+      const res = movement.set(name)
+      if (!res.set) {
+        console.warn(`[policy] ${res.reason}.`,
+          `Unlocked: ${unlockedPolicies(profile).join(', ')}`)
+        return movement.current()
       }
-      return allowed
+      // A policy earned mid-run applies to the NEXT run: the live run holds a
+      // snapshot of the list it was created with, and the engine clamps to it.
+      if (!(simState.runMeta?.policies ?? []).includes(name)) {
+        console.warn(`[policy] '${name}' was unlocked after this run started — ` +
+          'the live run will ignore it. It applies from the next run.')
+      } else {
+        console.log(`[policy] now walking '${name}'`)
+      }
+      return movement.current()
     }
-    window.__movePolicies = () => ({
-      all: Object.keys(MOVE_POLICIES),
-      unlocked: unlockedPolicies(profile),
-      activeThisRun: simState.runMeta?.policies ?? [],
-    })
+    window.__movePolicies = () => movement.list()
 
     // ── Meta progression ───────────────────────────────────────────────────
     window.__profile = () => profile
@@ -457,7 +517,13 @@ export async function mount(container, host) {
       persist()
       return true
     }
-    window.__newRun      = (seed) => { simState = createState(seed ?? Date.now()) }
+    // Takes the character's meta snapshot, like a real run does. Without it a
+    // dev restart silently dropped back to the base policy list, so a selected
+    // 'patrol' stopped being honoured with nothing on screen to say why.
+    window.__newRun = (seed) => {
+      simState = createState(seed ?? Date.now(), runMetaFor(profile))
+      runBanked = false
+    }
 
     // Persistence controls
     window.__save  = async () => { await persist(); return store.get(slotId) }
@@ -498,15 +564,16 @@ export async function mount(container, host) {
       '  window.__pickGate(0|1|2)  — manually resolve next gate',
       '  window.__rerollGate()     — spend gold to reroll gate options',
       '  window.__setAutopilot(false) — take manual control',
-      '  window.__setMovePolicy(name) — hold | center | patrol | kite',
+      '  window.__setMovePolicy(name) — hold | center | patrol | kite (persists)',
+      '  window.__movePolicies()   — the ladder: labels, unlocks, selection',
       '  WASD / arrows             — manual movement (overrides policy)',
+      '  (in the combat zone the character you see IS the sim player)',
       '',
       'Meta (persists across deaths, per character slot):',
       '  window.__profile()        — echoes, record depth, unlocks, lifetime',
       '  window.__board()          — upgrade board with costs/affordability',
       '  window.__buy(id)          — buy a level (applies to the NEXT run)',
       '  window.__achievements()   — checklist; these grant movement policies',
-      '  window.__movePolicies()   — all vs unlocked vs active this run',
       '  window.__endRun()         — end the run now and bank its echoes',
       '',
       'Items:',
@@ -575,12 +642,24 @@ export async function mount(container, host) {
 }
 
 // ── Sync sim state → Babylon.js render layer ──────────────────────────────
-// The sim and the legacy game are currently parallel — the legacy game owns
-// its own health, enemies, and combat. Don't cross-write health here or the
-// legacy checkGameOver() will trigger when the sim player dies.
-// Expand this as each system gets ported from legacy to sim.
-function syncSimToRender(_simState, _game) {
-  // Nothing yet — sim surfaces via window.__sim() in dev console
+//
+// Position is the first system to genuinely cross over. Until now this was an
+// empty stub, which meant the player you watched was the legacy WASD one
+// while the movement policies steered a second, invisible player: the ladder
+// decided a run's depth, echoes and loot and had no expression on screen at
+// all. Drawing the sim's player is what makes the movement system observable
+// rather than theoretical.
+//
+// Called only from inside the combat-zone guard, so it is also the statement
+// of who owns position: the sim, wherever a run is ticking. Home base has no
+// run, and game.onAreaChanged() hands the mesh back to the keyboard there.
+//
+// Still parallel — the legacy layer owns these and must keep owning them
+// until each is ported: health, enemies, projectiles, pickups, waves. In
+// particular, do NOT cross-write health here: the legacy checkGameOver()
+// would fire (alert + page reload) the moment the sim player died.
+function syncSimToRender(simState, game) {
+  game.player.driveTo(simState.player.x, simState.player.z)
 }
 
 // Preserve legacy debug commands for render-layer inspection

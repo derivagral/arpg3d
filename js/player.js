@@ -1,5 +1,14 @@
 // Player Class
 class Player {
+    /**
+     * Largest per-frame step that still counts as *travel* when the sim is
+     * driving. Waves recentre the player to the origin, which arrives here as
+     * one enormous step; treating it as movement would spin the model to
+     * "face" a jump it never walked. Comfortably above a real frame's travel
+     * (speed 0.15/frame, a few times that on a long frame).
+     */
+    static MAX_DRIVEN_STEP = 2;
+
     constructor(scene, game = null) {
         // Kept so bounds can read the CURRENT area's ground size.
         this.game = game;
@@ -46,6 +55,13 @@ class Player {
         this.level = 1;
         this.rangeUpdated = false;
         this.lastDamageSource = null; // { name, damage, type } — what last hit us
+
+        // Position authority. The sim owns x/z wherever a run is ticking (the
+        // combat zone) and pushes it in through driveTo(); the keys below only
+        // move the player where no run is ticking (home base). Exactly one
+        // writer at a time is the point — with both live, the sim's write
+        // lands last every frame and WASD reads as dead input.
+        this.positionDriven = false;
 
         this.createMesh();
         this.setupInput();
@@ -120,7 +136,66 @@ class Player {
         });
     }
 
-    update(camera) {
+    /**
+     * Take this frame's position from an outside authority — the sim, which
+     * owns player position inside the combat zone (docs/sim/movement.md).
+     *
+     * Coordinates are world units and are used as-is. The sim and the render
+     * layer deliberately share one scale, so there is no conversion here and
+     * there should never be one: a scale factor would make ARENA_RADIUS and
+     * the ground size mean two different distances.
+     */
+    driveTo(x, z) {
+        this.positionDriven = true;
+
+        const prevX = this.mesh.position.x;
+        const prevZ = this.mesh.position.z;
+        this.mesh.position.x = x;
+        this.mesh.position.z = z;
+        this.clampToArea();
+
+        // Face the way we travelled — but only if we travelled. A wave start
+        // recentres the player, and turning to "face" that teleport would
+        // snap the model to a heading it never walked.
+        const dx = this.mesh.position.x - prevX;
+        const dz = this.mesh.position.z - prevZ;
+        const step = Math.sqrt(dx * dx + dz * dz);
+        if (step > 0.001 && step < Player.MAX_DRIVEN_STEP) {
+            this.mesh.rotation.y = Math.atan2(dx, dz);
+        }
+    }
+
+    /** Hand position back to the keyboard (leaving the combat zone). */
+    releaseDrive() {
+        this.positionDriven = false;
+    }
+
+    /**
+     * Keep the player on the ground plane. Areas have different ground sizes,
+     * so read the CURRENT one — the global default doesn't enclose the
+     * smaller home base.
+     */
+    clampToArea() {
+        const groundSize = (this.game && this.game.currentGroundSize)
+            || CONFIG.world.groundSize;
+        const maxDist = groundSize / 2 - 1;
+        this.mesh.position.x = Math.max(-maxDist,
+            Math.min(maxDist, this.mesh.position.x));
+        this.mesh.position.z = Math.max(-maxDist,
+            Math.min(maxDist, this.mesh.position.z));
+    }
+
+    /**
+     * WASD/arrows move the mesh directly. This is the home-base path only —
+     * in the combat zone the same keys are read by src/games/arpg3d/index.js
+     * and fed to the sim as `input.move`, so manual play and idle policies
+     * share one tick and one balance model.
+     *
+     * Screen convention: the camera sits at -z looking toward +z, so W is +z
+     * ("up the screen"). The sim's key mapping mirrors this exactly — see the
+     * note on MOVE_KEYS in src/games/arpg3d/index.js.
+     */
+    applyKeyboardMovement() {
         const moveVector = new BABYLON.Vector3(0, 0, 0);
 
         if (this.keys['w'] || this.keys['arrowup']) moveVector.z += 1;
@@ -128,28 +203,26 @@ class Player {
         if (this.keys['a'] || this.keys['arrowleft']) moveVector.x -= 1;
         if (this.keys['d'] || this.keys['arrowright']) moveVector.x += 1;
 
-        if (moveVector.length() > 0) {
-            moveVector.normalize();
-            this.mesh.position.addInPlace(
-                moveVector.scale(this.stats.speed)
-            );
+        if (moveVector.length() === 0) return;
 
-            // Keep player in bounds. Areas have different ground sizes, so
-            // read the CURRENT one — the global default doesn't enclose the
-            // smaller home base.
-            const groundSize = (this.game && this.game.currentGroundSize)
-                || CONFIG.world.groundSize;
-            const maxDist = groundSize / 2 - 1;
-            this.mesh.position.x = Math.max(-maxDist,
-                Math.min(maxDist, this.mesh.position.x));
-            this.mesh.position.z = Math.max(-maxDist,
-                Math.min(maxDist, this.mesh.position.z));
+        moveVector.normalize();
+        this.mesh.position.addInPlace(
+            moveVector.scale(this.stats.speed)
+        );
+        this.clampToArea();
 
-            // Rotate to face movement direction
-            if (moveVector.length() > 0.1) {
-                const angle = Math.atan2(moveVector.x, moveVector.z);
-                this.mesh.rotation.y = angle;
-            }
+        // Rotate to face movement direction
+        if (moveVector.length() > 0.1) {
+            const angle = Math.atan2(moveVector.x, moveVector.z);
+            this.mesh.rotation.y = angle;
+        }
+    }
+
+    update(camera) {
+        // Skipped while the sim is driving: driveTo() already placed us, and
+        // adding a keyboard step on top would be a second writer fighting it.
+        if (!this.positionDriven) {
+            this.applyKeyboardMovement();
         }
 
         // Camera follow

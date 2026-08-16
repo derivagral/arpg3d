@@ -16,6 +16,46 @@ position, so no policy can escape.
 The player is recentred to the origin at each wave start, so the spawn ring
 is always drawn around them and every wave begins as a clean engagement.
 
+## Who owns the player you can see
+The rendered player **is** the sim player wherever a run is ticking. That was
+not always true, and the gap mattered more than it sounds: `syncSimToRender()`
+used to be an empty stub, so policies steered an invisible sim player while the
+character on screen was the legacy WASD one. The ladder decided a run's depth,
+echoes and loot, and had no expression on screen at all — the measured spread
+below was real but unwatchable.
+
+Position is therefore the first system to genuinely cross the sim/render line:
+
+| Where | Owns position | How |
+|-------|---------------|-----|
+| Combat zone | the sim | `syncSimToRender()` → `player.driveTo(x, z)` each tick |
+| Home base | the keyboard | `Player.applyKeyboardMovement()` — no run is ticking |
+
+`Player.positionDriven` is the latch, and `game.onAreaChanged` releases it on
+the way home. Exactly one writer at a time is the whole point: with both live,
+the sim's write lands last every frame and WASD reads as dead input.
+
+The two layers share **one scale** — a sim unit is a world unit, with no
+conversion anywhere. Introducing one would make `ARENA_RADIUS` and the render
+layer's `groundSize` mean two different distances.
+
+### Screen convention
+The camera sits at `-z` looking toward `+z`, so **W is `+z`** ("up the
+screen"). The sim's key mapping (`MOVE_KEYS` in `src/games/arpg3d/index.js`)
+had this inverted, which was harmless for exactly as long as the sim player
+was never drawn — the moment the mesh followed sim position, W walked the
+character toward the camera in combat and away from it at home base. Both
+layers now state the same convention.
+
+### Two visible artifacts, both deliberate
+- **Waves recentre you.** The sim resets the player to the origin at each wave
+  start, which renders as a teleport rather than a walk. `driveTo()` skips its
+  facing update for steps larger than `Player.MAX_DRIVEN_STEP` so the model
+  doesn't snap to a heading it never walked.
+- **The arena is smaller than the ground.** `ARENA_RADIUS` (23) confines the
+  sim player well inside the combat zone's 69-wide ground, so you cannot walk
+  to the visible edge. The disc is the real play space; the ground is scenery.
+
 ## Movement as a policy
 Movement is a pure function from (player, enemies) to a direction:
 
@@ -62,6 +102,36 @@ outcome, which is what makes an unlockable movement ladder worth having.
 (Figures are with no meta upgrades; a bought-out board pushes kite to ~50.)
 Policies are earned through achievements — see docs/sim/profile.md — and the
 engine clamps `input.movePolicy` to what the run actually unlocked.
+
+## Choosing a policy
+The choice is a **standing order**, not part of the run snapshot. Gear is
+frozen at run start; a policy is not, because changing your idle worker's
+orders while it works is the point of having orders.
+
+Three pieces, in the sim so a UI can't invent its own rules:
+
+| Piece | What it does |
+|-------|--------------|
+| `profile.movePolicy` | the stored preference, so a choice survives a reload |
+| `setMovePolicy(profile, name)` | pure setter; refuses unknown/locked names **with a reason** |
+| `activePolicy(profile)` | normalizes on read — a retired or un-unlocked policy reads as the default rather than silently falling through |
+| `POLICY_META` | id/name/description per policy, for rendering the ladder |
+
+`POLICY_META` lives beside the implementations in `sim/movement.js`, and
+`sim/movement.test.js` asserts the two lists match: a policy missing from it is
+one the player can never choose, and an entry without an implementation is an
+option that does nothing when picked.
+
+`game.movement` (`src/games/arpg3d/index.js`) is the single validated seam over
+all of this — `current()`, `list()`, `set()` — installed on the game instance
+the same way `openStashPanel` is. The dev console goes through it today and a
+selector UI would go through the same three calls; there is deliberately no
+bare setter, because the engine's own clamp is silent by design and a UI that
+appeared to select a locked policy would be lying.
+
+There is **no in-game selector yet** — `window.__setMovePolicy()` is still the
+only way to change it. That is a missing view over a finished mechanism, not a
+missing mechanism.
 
 ## Runs must never stall
 A moving player is strictly faster than `basic` (0.06) and `tank` (0.035), so

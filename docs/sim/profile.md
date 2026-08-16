@@ -29,8 +29,15 @@ base stats. Passing a live profile object into a run is a bug.
   upgrades: { [upgradeId]: level },
   unlocks: ['policy:patrol', ...],
   achievements: ['depth_4', ...],
+  movePolicy: 'center',   // standing order — a preference, not a snapshot
 }
 ```
+
+`movePolicy` is the one field here that a run reads **live** rather than
+through the snapshot. That is deliberate: gear is frozen for the run, but an
+idle worker's standing order can be changed while it works. It lives on the
+profile only so the choice survives a reload, and `activePolicy(profile)`
+clamps it to what is unlocked on every read.
 
 `runMetaFor(profile)` → `{ upgrades, policies }` — everything a run needs and
 nothing that can change under it.

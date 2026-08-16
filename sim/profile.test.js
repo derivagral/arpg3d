@@ -13,6 +13,8 @@ import {
   upgradeCost,
   applyUpgrades,
   unlockedPolicies,
+  activePolicy,
+  setMovePolicy,
   runMetaFor,
   summarizeRun,
   hydrateProfile,
@@ -26,7 +28,7 @@ import {
 } from './profile.js'
 import { BASE_PLAYER, baseForRun, derivePlayerStats } from './player.js'
 import { createState, tick } from './engine.js'
-import { MOVE_POLICIES } from './movement.js'
+import { MOVE_POLICIES, DEFAULT_POLICY } from './movement.js'
 
 // ── Echo payout ──────────────────────────────────────────────────────────────
 
@@ -93,6 +95,62 @@ test('reaching depth thresholds unlocks movement policies', () => {
 
   ;({ profile: p } = awardRun(p, summary({ depth: 20 })))
   assert.ok(unlockedPolicies(p).includes('kite'), 'depth 20 should grant kite')
+})
+
+// ── The standing order (movement policy preference) ──────────────────────────
+
+test('a fresh profile starts on the default policy', () => {
+  assert.equal(createProfile().movePolicy, DEFAULT_POLICY)
+  assert.equal(activePolicy(createProfile()), DEFAULT_POLICY)
+})
+
+test('setMovePolicy refuses unknown and locked policies, with a reason', () => {
+  const p = createProfile()
+
+  const unknown = setMovePolicy(p, 'sprint')
+  assert.equal(unknown.set, false)
+  assert.match(unknown.reason, /unknown/)
+  assert.equal(unknown.profile, p, 'a refusal returns the profile untouched')
+
+  const locked = setMovePolicy(p, 'patrol')
+  assert.equal(locked.set, false)
+  assert.match(locked.reason, /not unlocked/)
+  assert.equal(locked.profile.movePolicy, DEFAULT_POLICY)
+})
+
+test('setMovePolicy takes an unlocked policy and is pure', () => {
+  const before = createProfile()
+  const snapshot = JSON.parse(JSON.stringify(before))
+
+  const { profile: earned } = awardRun(before, summary({ depth: 4 }))
+  const { profile: next, set } = setMovePolicy(earned, 'patrol')
+
+  assert.equal(set, true)
+  assert.equal(next.movePolicy, 'patrol')
+  assert.deepEqual(before, snapshot, 'the input profile is never mutated')
+})
+
+test('a stored policy is clamped to what the profile can actually use', () => {
+  // Reachable by editing a save, or by a policy being retired from the pool.
+  // Either way the engine would silently fall back; say so here instead.
+  assert.equal(activePolicy({ ...createProfile(), movePolicy: 'kite' }), DEFAULT_POLICY)
+  assert.equal(activePolicy({ ...createProfile(), movePolicy: 'sprint' }), DEFAULT_POLICY)
+
+  const { profile: earned } = awardRun(createProfile(), summary({ depth: 20 }))
+  assert.equal(activePolicy({ ...earned, movePolicy: 'kite' }), 'kite')
+})
+
+test('the chosen policy survives a save round-trip', () => {
+  const { profile: earned } = awardRun(createProfile(), summary({ depth: 4 }))
+  const { profile: chosen } = setMovePolicy(earned, 'patrol')
+
+  const reloaded = hydrateProfile(JSON.parse(JSON.stringify(chosen)))
+  assert.equal(reloaded.movePolicy, 'patrol')
+
+  // A save written before this field existed reads as the default, not undefined.
+  const legacy = { ...JSON.parse(JSON.stringify(chosen)) }
+  delete legacy.movePolicy
+  assert.equal(hydrateProfile(legacy).movePolicy, DEFAULT_POLICY)
 })
 
 test('achievements are awarded once and reported when earned', () => {

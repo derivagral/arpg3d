@@ -20,6 +20,7 @@
  */
 
 import { createStash, createEquipment, hydrateContainer, hydrateEquipment, addItems, STASH_SIZE } from './inventory.js'
+import { DEFAULT_POLICY, isPolicy } from './movement.js'
 
 export const PROFILE_VERSION = 1
 
@@ -189,6 +190,12 @@ export const createProfile = () => ({
   // Highest item uid the player has actually looked at. Anything above it is
   // "new" and worth nudging about. Persisted so the badge survives a reload.
   seenItemUid: 0,
+  // Standing order for the idle worker. It is a PREFERENCE, not part of the
+  // runMeta snapshot: unlike gear, a policy may be changed while a run is
+  // live — that is the whole point of an idle standing order. It lives on the
+  // profile so the choice survives a reload rather than resetting to the
+  // default every session.
+  movePolicy: DEFAULT_POLICY,
 })
 
 /** Movement policies this profile may use. */
@@ -198,6 +205,40 @@ export const unlockedPolicies = (profile) => [
     .filter(u => u.startsWith('policy:'))
     .map(u => u.slice('policy:'.length)),
 ]
+
+/**
+ * The policy this profile should actually run with, clamped to what it has
+ * unlocked. Stored preferences are normalized on read rather than trusted:
+ * unlocks are never revoked today, but a renamed or retired policy would
+ * otherwise leave a save pointing at a policy that no longer exists, and the
+ * engine would silently fall back to the default with no explanation.
+ */
+export const activePolicy = (profile) => {
+  const want = profile?.movePolicy
+  return isPolicy(want) && unlockedPolicies(profile).includes(want) ? want : DEFAULT_POLICY
+}
+
+/**
+ * Choose the movement policy. Pure — returns a new profile.
+ *
+ * Refuses unknown and not-yet-unlocked policies *with a reason*, so the one
+ * caller today (the dev console) and any selector UI later can say why
+ * nothing happened instead of appearing to succeed. The engine clamps
+ * `input.movePolicy` independently — this is the friendly gate, not the
+ * security one.
+ *
+ * @returns {{ profile: object, set: boolean, reason: string|null }}
+ */
+export const setMovePolicy = (profile, name) => {
+  if (!isPolicy(name)) {
+    return { profile, set: false, reason: `unknown policy '${name}'` }
+  }
+  if (!unlockedPolicies(profile).includes(name)) {
+    return { profile, set: false, reason: `'${name}' is not unlocked yet` }
+  }
+  if (profile.movePolicy === name) return { profile, set: true, reason: null }
+  return { profile: { ...profile, movePolicy: name }, set: true, reason: null }
+}
 
 /**
  * The immutable snapshot handed to a run at creation.
@@ -313,7 +354,7 @@ export const purchaseUpgrade = (profile, id) => {
 export const hydrateProfile = (raw) => {
   const fresh = createProfile()
   if (!raw || typeof raw !== 'object') return fresh
-  return {
+  const merged = {
     ...fresh,
     ...raw,
     lifetime: { ...fresh.lifetime, ...(raw.lifetime ?? {}) },
@@ -324,4 +365,6 @@ export const hydrateProfile = (raw) => {
     equipment: hydrateEquipment(raw.equipment),
     seenItemUid: raw.seenItemUid ?? 0,
   }
+  // Normalized last: it is derived from `unlocks`, which is only final above.
+  return { ...merged, movePolicy: activePolicy(merged) }
 }

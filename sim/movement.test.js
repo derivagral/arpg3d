@@ -9,9 +9,12 @@ import {
   ARENA_RADIUS,
   PATROL_POINTS,
   MOVE_POLICIES,
+  POLICY_META,
   DEFAULT_POLICY,
   clampToArena,
   resolveMove,
+  isPolicy,
+  policyMeta,
 } from './movement.js'
 import { createState, tick, ENGAGEMENT_SLOTS, BASE_PLAYER, ENEMY_TEMPLATES } from './engine.js'
 import { createProfile, runMetaFor } from './profile.js'
@@ -77,6 +80,32 @@ test('kite flees the threat and falls back to center when clear', () => {
     MOVE_POLICIES.kite(player({ x: 5, z: 0 }), far),
     MOVE_POLICIES.center(player({ x: 5, z: 0 }), far)
   )
+})
+
+test('every policy is described, and every description names a real policy', () => {
+  // A selector UI renders POLICY_META, so a policy missing from it is a
+  // policy the player can never choose — and an entry with no implementation
+  // is an option that does nothing when picked.
+  assert.deepEqual(
+    POLICY_META.map(p => p.id).sort(),
+    Object.keys(MOVE_POLICIES).sort()
+  )
+  for (const p of POLICY_META) {
+    assert.ok(p.name && p.desc, `${p.id} needs a name and a description`)
+  }
+  assert.ok(POLICY_META.some(p => p.id === DEFAULT_POLICY), 'the default must be listable')
+})
+
+test('isPolicy accepts real policies and nothing else', () => {
+  assert.ok(isPolicy(DEFAULT_POLICY))
+  assert.ok(!isPolicy('nonexistent'))
+  assert.ok(!isPolicy(undefined))
+  // MOVE_POLICIES is a plain object, so inherited names must not read as
+  // policies — 'constructor' would otherwise pass validation everywhere.
+  assert.ok(!isPolicy('constructor'))
+  assert.ok(!isPolicy('toString'))
+  assert.equal(policyMeta('nonexistent'), null)
+  assert.equal(policyMeta(DEFAULT_POLICY).id, DEFAULT_POLICY)
 })
 
 test('manual move input overrides the active policy', () => {

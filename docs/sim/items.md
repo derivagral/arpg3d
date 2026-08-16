@@ -169,17 +169,17 @@ Sim-owned pickups carry `fromSim: true`. They never re-enter the legacy bag
 (the item would exist twice) and are never blocked by the legacy bag being
 full. `ItemGenerator` in `js/items.js` is now unused by the drop path.
 
-## Movement policies are dev-console only
-`input.movePolicy` defaults to `center` and is only reachable via
-`window.__setMovePolicy()`. There is no in-game UI for it yet, and — more
-importantly — `syncSimToRender()` is still an empty stub, so the sim's player
-(the one policies move) is not the player you see. The rendered player is the
-legacy WASD one. Policies therefore shape the headless run's outcome, not
-anything on screen.
+## Movement policies have no selector yet
+`syncSimToRender()` is no longer a stub: inside the combat zone the rendered
+player **is** the sim player, so the policy ladder is now visible behaviour
+rather than a balance model with no expression on screen. See
+docs/sim/movement.md.
 
-Wiring the rendered player to `simState.player.x/z` is the next real step in
-the render port; until then the policy ladder is a balance model with no
-visible expression.
+What is still missing is only the *view*. `input.movePolicy` is restored from
+`profile.movePolicy` and changed through `game.movement.set()`, which the dev
+console reaches as `window.__setMovePolicy()`; nothing in the game surfaces the
+choice. The mechanism underneath (persisted preference, validated setter,
+`POLICY_META` labels) is complete and is what a selector would bind to.
 
 ## Dev console
 ```js

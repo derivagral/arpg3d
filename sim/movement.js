@@ -137,6 +137,27 @@ export const MOVE_POLICIES = {
 }
 
 /**
+ * Player-facing description of each policy, in ladder order.
+ *
+ * It lives here, beside the implementations, so a policy can never ship
+ * without a label — sim/movement.test.js asserts the two stay in step. The
+ * sim never reads this; it exists so a selector UI (or the dev console) can
+ * present the ladder without hardcoding names it would then have to chase.
+ */
+export const POLICY_META = Object.freeze([
+  { id: 'hold',   name: 'Hold Ground', desc: 'Stand and fight. Takes the most damage — the floor of the ladder.' },
+  { id: 'center', name: 'Recentre',    desc: 'Walk back to the middle and hold there.' },
+  { id: 'patrol', name: 'Patrol',      desc: 'Circuit the arena to string the swarm out, then hunt down stragglers.' },
+  { id: 'kite',   name: 'Kite',        desc: 'Flee the nearest threats along a curving path that avoids the wall.' },
+])
+
+/** @returns {boolean} whether `id` names a real policy. */
+export const isPolicy = (id) => typeof id === 'string' && Object.hasOwn(MOVE_POLICIES, id)
+
+/** @returns {{id, name, desc}|null} */
+export const policyMeta = (id) => POLICY_META.find(p => p.id === id) ?? null
+
+/**
  * Resolve this frame's movement direction.
  * Manual input wins over any policy — that's the ARPG-controls fallback.
  *
