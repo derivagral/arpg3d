@@ -118,7 +118,10 @@ null. There is no login wall.
 
 Signing in uses **atproto** (type a handle, authenticate on your own PDS — this
 app never sees a password) and is identity-only: it yields your DID and nothing
-else. Saves are keyed on that DID, so they follow you to another machine.
+else. Note that a **handle is not an email**: the Bluesky app signs you in with
+an email and a password, but nothing outside your own PDS can map an email to
+an account, so sign-in here wants `alice.bsky.social`, a DID, or your server's
+URL (`https://bsky.social`) if you don't remember your handle. Saves are keyed on that DID, so they follow you to another machine.
 Signing in offers a one-time copy of your guest saves; it is a copy, so signing
 out returns you to exactly what you had.
 
@@ -134,14 +137,20 @@ SITE_BASE=/arpg3d/ SITE_ORIGIN=https://<user>.github.io npm run build
 ```
 
 Pushing to `main` deploys to GitHub Pages via `.github/workflows/deploy.yml`,
-which derives those two values from the repo and fails the deploy if the
-generated `client_id` or callback file would be wrong. It needs Pages set to
-build from "GitHub Actions" in repo settings once, by hand.
+which takes those two values from `actions/configure-pages` (so a user site, a
+project subpath and a custom domain all work unedited) and fails the deploy if
+the generated `client_id` or callback file would be wrong. That step also
+enables Pages on the first run — deploys used to 404 until it was switched to
+"GitHub Actions" by hand.
 
 Dev must be browsed at `127.0.0.1`: atproto's loopback `client_id` requires the
 redirect to land there, and `localhost` is a different origin whose session is
-invisible to the callback. See `docs/identity.md` for the full contract, the
-provider interface, and the trust boundaries.
+invisible to the callback.
+
+Sign-in spans four page loads, so it records a trace that survives them:
+`__identity.report()` in the console, `?identityDebug=1` to also mirror it live.
+See `docs/identity.md` for the full contract, the provider interface, the trust
+boundaries, and what the trace catches.
 
 ## Controls
 

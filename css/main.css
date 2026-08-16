@@ -1075,14 +1075,28 @@ body {
 
 .identity-modal .identity-close:hover { color: #eee; }
 
+/*
+ * Sized to hold a paragraph, not a word. The messages that matter most here
+ * ("that's an email address, your handle is the @name you post under, here is
+ * where to find it") only help if they fit, so this wraps rather than
+ * truncating and reserves a line so the panel does not jump when one appears.
+ */
 .identity-modal .identity-status {
     min-height: 18px;
     font-size: 13px;
+    line-height: 1.5;
     color: #66ff66;
     margin-bottom: 8px;
 }
 
-.identity-modal .identity-status.error { color: #ff6666; }
+.identity-modal .identity-status.error { color: #ff8a8a; }
+
+.identity-modal .identity-hint {
+    margin: 0;
+    font-size: 12px;
+    line-height: 1.5;
+    color: #8d8d8d;
+}
 
 .identity-modal .identity-provider {
     display: flex;

@@ -21,8 +21,9 @@
  * launch, so a player only ever downloads the game they chose.
  */
 
-import { createShellIdentity } from './identity/boot.js'
+import { createShellIdentity, siteBase } from './identity/boot.js'
 import { isAnon } from './identity/identity.js'
+import { identityTrace } from './identity/trace.js'
 import { createSaveStore, adoptLegacySaves } from './storage/saveStore.js'
 import { chooseBackend } from './storage/chooseBackend.js'
 import { claimOffer, claimSaves, declineClaim } from './storage/claim.js'
@@ -43,6 +44,18 @@ window.addEventListener('DOMContentLoaded', () => {
 
 async function boot() {
   const storage = globalThis.localStorage
+
+  // Reachable from a devtools console as __identity.report(). The trace is
+  // recorded either way; this only makes it readable without an import, and
+  // records the environment values that decide whether sign-in can work at
+  // all — origin above all, because dev browsed at localhost instead of
+  // 127.0.0.1 breaks the flow in a way nothing else reports.
+  identityTrace.install()
+  identityTrace.event('shell.boot', {
+    origin: globalThis.location?.origin ?? '?',
+    base: siteBase(),
+  })
+
   const identityManager = createShellIdentity({ storage })
 
   // Always yields an Identity — a guest one if nothing else resolves. No

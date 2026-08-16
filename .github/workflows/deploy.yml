@@ -1,8 +1,13 @@
 name: Deploy to GitHub Pages
 
-# One-time manual step before this works: repo Settings → Pages → Source →
-# "GitHub Actions". Until that is set, this workflow builds fine and the
-# deploy step fails.
+# `actions/configure-pages` enables Pages and switches its source to GitHub
+# Actions on the first run, so this workflow no longer needs a manual step in
+# repo settings. Without it, the build succeeds and `deploy-pages` fails with a
+# bare `Failed to create deployment (status: 404)` — the deployment endpoint
+# does not exist until a Pages site does, and the 404 says nothing about that.
+#
+# If that step ever fails on permissions, the manual equivalent is
+# Settings → Pages → Source → "GitHub Actions".
 
 on:
   push:
@@ -24,9 +29,9 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -37,33 +42,38 @@ jobs:
       # costs players their runs.
       - run: npm test
 
+      # Enables Pages if it is not enabled yet, and reports where the site
+      # will actually be served from.
+      - name: Configure Pages
+        id: pages
+        uses: actions/configure-pages@v6
+        with:
+          enablement: true
+
       # ── Resolve the deploy URL ────────────────────────────────────────────
       # This is not cosmetic. SITE_ORIGIN and SITE_BASE are baked into
       # client-metadata.json, and atproto authorization servers fetch that
       # document at the exact URL they were handed as client_id. A wrong
       # value does not degrade — it fails sign-in outright.
       #
-      # Values come in through `env:` rather than ${{ }} interpolation inside
-      # the script, so a repository or owner name can never be shell-injected.
+      # The URL comes from the Pages API rather than being reconstructed from
+      # the repository name, so a user site, a project site under /<repo>/ and
+      # a custom domain are all handled without editing this file.
+      #
+      # It arrives through `env:` rather than ${{ }} interpolation inside the
+      # script so that nothing from the API can be shell-injected, and is
+      # parsed with the same URL semantics src/identity/clientMetadata.js uses.
       - name: Resolve site origin and base
         env:
-          OWNER: ${{ github.repository_owner }}
-          REPO: ${{ github.event.repository.name }}
+          BASE_URL: ${{ steps.pages.outputs.base_url }}
         run: |
           set -euo pipefail
-          owner_lc=$(printf '%s' "$OWNER" | tr '[:upper:]' '[:lower:]')
+          test -n "$BASE_URL" || { echo "::error::Pages did not report a base_url"; exit 1; }
 
-          # A repo named <owner>.github.io is a USER site, served from the
-          # domain root. Everything else is a project site under /<repo>/.
-          if [ "$REPO" = "$owner_lc.github.io" ]; then
-            base="/"
-          else
-            base="/$REPO/"
-          fi
+          origin=$(node -p 'new URL(process.env.BASE_URL).origin')
+          base=$(node -p 'const p = new URL(process.env.BASE_URL).pathname.replace(/\/+$/, ""); p ? p + "/" : "/"')
 
-          # Using a custom domain? Replace this with that domain and set base
-          # to "/" — Pages serves a CNAME'd site from the root.
-          echo "SITE_ORIGIN=https://$owner_lc.github.io" >> "$GITHUB_ENV"
+          echo "SITE_ORIGIN=$origin" >> "$GITHUB_ENV"
           echo "SITE_BASE=$base" >> "$GITHUB_ENV"
 
       - name: Build
@@ -87,7 +97,7 @@ jobs:
           echo "client_id:    $actual"
           echo "redirect_uri: $redirect"
 
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: ./dist
 
@@ -99,4 +109,4 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
