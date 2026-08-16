@@ -70,8 +70,10 @@ export const allAffixes = (equipment, runAffixes = []) =>
 /**
  * Effective stats for a run: base + meta upgrades, with gear and run affixes.
  *
- * `equipment` is live run state, so a swap applies on the very next tick.
- * It defaults to the runMeta loadout, which is what a run starts wearing.
+ * Gear is FIXED for the whole run — it comes from the runMeta snapshot taken
+ * at run start. The `equipment` parameter exists so callers can be explicit,
+ * but nothing should pass anything other than the run's own loadout.
+ * See docs/sim/items.md for why the loadout is static per run.
  */
 export const statsForRun = (runMeta, runAffixes = [], equipment = runMeta?.equipment) =>
   derivePlayerStats(allAffixes(equipment, runAffixes), baseForRun(runMeta))

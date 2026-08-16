@@ -324,9 +324,7 @@ test('a geared run starts with the extra health its gear grants', () => {
   assert.equal(geared.player.hp, geared.player.maxHp)
 })
 
-test('a run never observes later PROFILE changes', () => {
-  // Equipment is live run state now, but it is still SEEDED from the snapshot:
-  // editing the profile after the run starts must not reach into the run.
+test('a run never observes later profile changes', () => {
   const eq = createEquipment()
   eq.weapon = mkItem({ uid: 1 })
   const profile = { ...createProfile(), equipment: eq }
@@ -334,86 +332,35 @@ test('a run never observes later PROFILE changes', () => {
 
   profile.equipment.weapon = mkItem({ uid: 2, affixes: [{ id: 'flat_dmg_2', delta: { flatDamage: 999 } }] })
   const after = tick(s, 16.67, { autopilot: false })
-  assert.equal(after.player.equipment.weapon.uid, 1, 'run keeps the loadout it started with')
+  assert.equal(after.runMeta.equipment.weapon.uid, 1, 'run keeps the loadout it started with')
 })
 
-test('swapping gear mid-run applies on the next tick', () => {
-  let s = createState(5)
-  const before = tick(s, 16.67, { autopilot: false })
-  const baseDamage = statsForRun(before.runMeta, before.player.affixes, before.player.equipment).damage
-
-  // Equip a weapon straight into live run state, the way the gear screen does
-  const eq = { ...before.player.equipment, weapon: mkItem({
-    uid: 99, affixes: [{ id: 'flat_dmg_2', delta: { flatDamage: 5 } }],
-  }) }
-  const swapped = { ...before, player: { ...before.player, equipment: eq } }
-  const after = tick(swapped, 16.67, { autopilot: false })
-
-  const geared = statsForRun(after.runMeta, after.player.affixes, after.player.equipment)
-  assert.equal(geared.flatDamage, 5, 'the item is contributing immediately')
-  assert.equal(geared.damage, baseDamage, 'base damage is unchanged; the affix is flat')
-  assert.equal(after.player.equipment.weapon.uid, 99)
-})
-
-test('mid-run maxHp gear raises the ceiling but never heals', () => {
-  // Otherwise equip/unequip would be an unlimited heal button.
-  let s = createState(6)
-  s = tick(s, 16.67, { autopilot: false })
-  s = { ...s, player: { ...s.player, hp: 50 } }
-
-  const eq = { ...s.player.equipment, chest: mkItem({
-    uid: 42, kind: 'chest', slot: 'chest',
-    affixes: [{ id: 'max_hp_2', delta: { maxHp: 29 } }],
-  }) }
-  const after = tick({ ...s, player: { ...s.player, equipment: eq } }, 16.67, { autopilot: false })
-
-  assert.equal(after.player.maxHp, s.player.maxHp + 29, 'ceiling rose')
-  assert.ok(after.player.hp <= 50 + 1e-9, 'current hp did not jump')
-})
-
-test('the run\'s final loadout carries back to the character', () => {
-  let s = createState(7)
-  const eq = { ...s.player.equipment, weapon: mkItem({ uid: 5 }) }
-  s = { ...s, player: { ...s.player, equipment: eq }, depth: 3 }
-
-  const { profile } = awardRun(createProfile(), summarizeRun(s))
-  assert.equal(profile.equipment.weapon.uid, 5, 'what you ended wearing is what you own')
-})
-
-test('live equipment survives a save round-trip', () => {
-  let s = createState(8)
-  const eq = { ...s.player.equipment, weapon: mkItem({ uid: 77 }) }
-  s = { ...s, player: { ...s.player, equipment: eq } }
-
-  const { state: h } = hydrateSim(serializeSim(s))
-  assert.equal(h.player.equipment.weapon.uid, 77)
-})
-
-test('pre-live-equipment snapshots fall back to the starting loadout', () => {
+test('the loadout is FIXED for the whole run', () => {
+  // Static-per-run is the roguelite contract: what you take in is what you
+  // fight with. There is deliberately no way to change gear mid-run, so the
+  // run's stats can never drift from the snapshot it was created with.
   const eq = createEquipment()
-  eq.weapon = mkItem({ uid: 3 })
-  const s = createState(9, runMetaFor({ ...createProfile(), equipment: eq }))
-  const snap = serializeSim(s)
-  delete snap.player.equipment
+  eq.weapon = mkItem({ uid: 1, affixes: [{ id: 'flat_dmg_2', delta: { flatDamage: 5 } }] })
+  let s = createState(9, runMetaFor({ ...createProfile(), equipment: eq }))
 
-  const { state } = hydrateSim(snap)
-  assert.equal(state.player.equipment.weapon.uid, 3, 'recovered from runMeta')
-})
+  const expected = statsForRun(s.runMeta, []).flatDamage
+  assert.equal(expected, 5)
 
-// ── Persistence ──────────────────────────────────────────────────────────────
-
-test('run inventory and loadout survive a save round-trip', () => {
-  const eq = createEquipment()
-  eq.weapon = mkItem({ uid: 1 })
-  let s = createState(4242, runMetaFor({ ...createProfile(), equipment: eq }))
-  for (let i = 0; i < 40000 && s.phase !== 'dead'; i++) {
+  for (let i = 0; i < 500 && s.phase !== 'dead'; i++) {
     s = tick(s, 16.67, { gateChoice: null, autopilot: true })
+    assert.equal(
+      statsForRun(s.runMeta, []).flatDamage, expected,
+      'gear contribution must not change while the run is alive'
+    )
   }
+  assert.equal(s.runMeta.equipment.weapon.uid, 1)
+})
 
-  const { state: h } = hydrateSim(serializeSim(s))
-  assert.deepEqual(h.player.inventory, s.player.inventory)
-  assert.equal(h.nextUid, s.nextUid)
-  assert.deepEqual(h.runMeta.equipment, s.runMeta.equipment)
+test('the run carries no equipment of its own', () => {
+  // Gear lives on the profile and reaches a run only through runMeta. A
+  // second copy on the player would be a place for the two to disagree.
+  const s = createState(4)
+  assert.equal(s.player.equipment, undefined)
 })
 
 test('pre-item snapshots hydrate with an empty bag and no loadout', () => {

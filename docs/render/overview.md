@@ -60,6 +60,26 @@ actually spawned something and that a short grace period has passed, so the
 gap before the first spawn — and a lull between spawns — aren't mistaken for
 a clear. The sim's own loop already advances immediately on wave clear.
 
+## Run lifecycle is bound to the area
+The sim only ticks inside the combat zone. Entering it starts a run
+(`createState` from the profile snapshot); returning home or dying banks it
+(`awardRun`) and returns the player to base. Home base has no run ticking,
+which is what makes "your loadout is fixed for the run" true rather than
+merely asserted — see docs/sim/items.md.
+
+`areaManager.transitionToArea()` calls `game.onAreaChanged(areaName)`; the
+game module owns the lifecycle, the render layer just reports the move.
+
+`cleanupArea()` clears enemies by mutating `game.state.enemies` **in place**.
+It used to assign `this.game.enemies = []`, but that is an alias captured once
+in the Game constructor — reassigning it left the real array untouched, so the
+horde followed the player home, kept attacking, and kept dropping orbs in the
+base. Anything clearing a shared array here must mutate, not rebind.
+
+Player bounds read `game.currentGroundSize`, set per area. The global
+`CONFIG.world.groundSize` is only a fallback; using it directly meant the
+smaller home base was not enclosed.
+
 ## World interaction prompts
 `areaManager.updateInteractionPrompt()` derives the prompt from current world
 state every frame — it does not track "shown" flags on portals or the stash.

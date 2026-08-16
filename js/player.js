@@ -1,6 +1,8 @@
 // Player Class
 class Player {
-    constructor(scene) {
+    constructor(scene, game = null) {
+        // Kept so bounds can read the CURRENT area's ground size.
+        this.game = game;
         this.scene = scene;
         this.mesh = null;
         this.rangeIndicator = null;
@@ -132,8 +134,12 @@ class Player {
                 moveVector.scale(this.stats.speed)
             );
 
-            // Keep player in bounds
-            const maxDist = CONFIG.world.groundSize / 2 - 1;
+            // Keep player in bounds. Areas have different ground sizes, so
+            // read the CURRENT one — the global default doesn't enclose the
+            // smaller home base.
+            const groundSize = (this.game && this.game.currentGroundSize)
+                || CONFIG.world.groundSize;
+            const maxDist = groundSize / 2 - 1;
             this.mesh.position.x = Math.max(-maxDist,
                 Math.min(maxDist, this.mesh.position.x));
             this.mesh.position.z = Math.max(-maxDist,

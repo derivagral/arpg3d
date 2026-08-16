@@ -18,8 +18,8 @@ class Stash {
             color: config.color || new BABYLON.Color3(0.25, 0.55, 1.0),      // blue
             glowColor: config.glowColor || new BABYLON.Color3(0.5, 0.8, 1.0),
             interactionRange: config.interactionRange || 3.5,
-            label: config.label || 'Stash',
-            hint: config.hint || 'Press E — store and equip gear',
+            label: config.label || 'Armory',
+            hint: config.hint || 'Press E — store loot and set your loadout',
             ...config
         };
 

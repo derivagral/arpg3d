@@ -111,6 +111,8 @@ export async function mount(container, host) {
   // never reads it directly — it only ever sees the runMeta snapshot taken
   // when a run starts.
   let profile = await store.getProfile(slotId)
+  // Guards double-banking when death and a portal home land together.
+  let runBanked = false
 
   // Player-level preferences the shell owns. Read once at mount: settings
   // changing mid-run is a shell concern, not something the game watches.
@@ -139,23 +141,14 @@ export async function mount(container, host) {
 
   const stashPanel = createStashPanel({
     getBag: () => simState.player.inventory,
-    getEquipment: () => simState.player.equipment,
+    // Loadout is a between-runs decision: locked while a run is live.
+    canEquip: () => !(game.areaManager && game.areaManager.isInCombatArea()),
     getProfile: () => profile,
-    onChange: ({ inventory, equipment, profile: nextProfile }) => {
-      if (inventory || equipment) {
-        simState = {
-          ...simState,
-          player: {
-            ...simState.player,
-            ...(inventory ? { inventory } : {}),
-            ...(equipment ? { equipment } : {}),
-          },
-        }
+    onChange: ({ inventory, profile: nextProfile }) => {
+      if (inventory) {
+        simState = { ...simState, player: { ...simState.player, inventory } }
       }
-      // Mirror the loadout onto the profile so it survives a reload mid-run;
-      // awardRun() also captures the run's final gear when the run ends.
-      if (equipment) profile = { ...(nextProfile ?? profile), equipment }
-      else if (nextProfile) profile = nextProfile
+      if (nextProfile) profile = nextProfile
       persist()
     },
     onClose: () => {
@@ -164,6 +157,48 @@ export async function mount(container, host) {
       game.state.stashOpen = false
     },
   })
+  // Fold the current run into the character and stop it. Safe to call twice.
+  const bankRun = (reason) => {
+    if (runBanked) return
+    runBanked = true
+    const { profile: earned, echoes, unlocked, stashed, overflow } =
+      awardRun(profile, summarizeRun(simState))
+    profile = earned
+    persist()
+
+    // Client-reported and unverifiable by construction — see host/telemetry.js.
+    host.telemetry?.report('run.ended', {
+      depth: simState.depth,
+      echoes: echoes.total,
+      newRecord: echoes.pb > 0,
+      reason,
+    })
+    console.log(`[run] ${reason} at depth ${simState.depth} → +${echoes.total} echoes` +
+      (echoes.pb > 0 ? ` (${echoes.pb} from a new record)` : '') +
+      ` | ${profile.echoes} banked`)
+    for (const a of unlocked) {
+      console.log(`[unlocked] ${a.name} — ${a.desc}${a.grants ? ` → ${a.grants}` : ''}`)
+    }
+    if (stashed.length) console.log(`[vault] +${stashed.length} items`)
+    if (overflow.length) {
+      console.warn(`[vault] FULL — ${overflow.length} item(s) could not be stored and were lost.`)
+    }
+    refreshItemNotice()
+  }
+
+  game.onAreaChanged = (areaName) => {
+    if (areaName === 'mobArea') {
+      // A fresh run, wearing whatever you just chose at home base.
+      simState = createState(Date.now(), runMetaFor(profile))
+      runBanked = false
+      persist()
+      refreshItemNotice()
+    } else {
+      bankRun('returned home')
+    }
+    if (stashPanel.refresh) stashPanel.refresh()
+  }
+
   game.openStashPanel = () => {
     markItemsSeen()
     game.state.paused = true
@@ -250,6 +285,9 @@ export async function mount(container, host) {
   // This one runs first (registration order). Both coexist safely.
   game.scene.registerBeforeRender(() => {
     if (game.state.paused) return
+    // The sim run IS the combat zone. At home base there is no run to advance,
+    // which is what makes the loadout you pick there the loadout you take in.
+    if (!game.areaManager || !game.areaManager.isInCombatArea()) return
 
     const deltaMs = engine.getDeltaTime()
     const input = { ...pendingInput, move: pendingInput.move ?? readMoveKeys() }
@@ -284,34 +322,12 @@ export async function mount(container, host) {
     // Run ended: fold it into the character profile (echoes, record depth,
     // lifetime stats, achievement unlocks), persist, then start a fresh run
     // from a NEW meta snapshot so purchases and unlocks take effect.
+    // Death ends the run and sends you home, where the next loadout is
+    // chosen. Previously this silently rolled a fresh run in place, which
+    // gave the player no moment to re-gear between attempts.
     if (isRunOver(simState)) {
-      const summary = summarizeRun(simState)
-      const { profile: earned, echoes, unlocked, stashed, overflow } = awardRun(profile, summary)
-      profile = earned
-      persist()
-
-      // Client-reported and unverifiable by construction — see host/telemetry.js.
-      host.telemetry?.report('run.ended', {
-        depth: simState.depth,
-        echoes: echoes.total,
-        newRecord: echoes.pb > 0,
-      })
-
-      console.log(
-        `[run] depth ${simState.depth} → +${echoes.total} echoes` +
-        (echoes.pb > 0 ? ` (${echoes.pb} from a new record)` : '') +
-        ` | ${profile.echoes} banked`
-      )
-      for (const a of unlocked) {
-        console.log(`[unlocked] ${a.name} — ${a.desc}${a.grants ? ` → ${a.grants}` : ''}`)
-      }
-      if (stashed.length) console.log(`[stash] +${stashed.length} items (${countItems(profile.stash)} stored)`)
-      if (overflow.length) {
-        console.warn(`[stash] FULL — ${overflow.length} item(s) could not be stored and were lost.`)
-      }
-
-      simState = createState(Date.now(), runMetaFor(profile))
-      refreshItemNotice()   // the bag just emptied into the stash
+      bankRun('died')
+      if (game.areaManager) game.areaManager.transitionToArea('homeBase')
     }
   })
 

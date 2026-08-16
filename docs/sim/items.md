@@ -54,24 +54,34 @@ never reshuffles the others.
 Sizes are deliberately generous — sorting gear should be the interesting part,
 not fighting for space. `CONFIG.inventory` mirrors these for the legacy UI.
 
-## Equipment is live run state, seeded from the profile
-`SimState.player.equipment` holds the live loadout. It is **seeded** from
-`runMeta.equipment` at `createState()`, and the run's final loadout is written
-back to the profile when the run ends (`awardRun`).
+## The loadout is static per run
+Gear lives on the **profile** and reaches a run only through the `runMeta`
+snapshot taken at `createState()`. It cannot change while the run is alive.
 
-**Gear changes apply on the very next tick.** Finding an upgrade and feeling it
-immediately is the active-play payoff — deferring it to the next run made the
-best moment in an ARPG land like an idle-game purchase. The determinism rule is
-untouched by this: the run still never *reads* profile state (tested — editing
-the profile mid-run cannot reach the run), it just owns its own gear now, the
-same way it owns its bag.
+This is the roguelite contract (Slay the Spire, Rogue Genesia) rather than the
+ARPG one: what you take in is what you fight with. It was chosen over live
+swapping for a concrete reason — reproducing a run means replaying its
+decisions, and a mid-run equip is a decision *about an item the log doesn't
+know the stats of yet*. Making the loadout an input to the run instead of an
+event inside it keeps `run = f(seed, runMeta, inputs)` genuinely small.
 
-For a future replay system this means gear swaps must be recorded alongside
-inputs, exactly like gate picks and movement.
+A run therefore carries **no equipment of its own** — a second copy on the
+player would only be somewhere for the two to disagree (tested).
 
-**Equipping never heals.** A +maxHp item raises the ceiling but not current hp;
-otherwise equip/unequip would be an unlimited heal button. Gates heal because
-they're discrete; gear swaps are not.
+### Where the player actually equips
+Because gear is fixed per run, equipping is a between-runs planning action, and
+the run lifecycle is bound to the world:
+
+| Event | Run |
+|-------|-----|
+| Enter the combat zone | `createState(seed, runMetaFor(profile))` — a new run wearing what you just chose |
+| Return home / die | `awardRun()` — haul banks, echoes pay out |
+| At home base | no run ticking; the loadout is editable |
+
+The sim only ticks inside the combat zone. That's what makes "your loadout is
+locked for the run" true rather than merely stated, and it gives home base a
+job beyond being a lobby. The Armory's Loadout column is read-only during a
+run — there's no action to offer, so it doesn't pretend there is.
 
 `statsForRun(runMeta, runAffixes)` in `sim/player.js` is the single place gear
 affixes and gate affixes are combined. `createState()` sizes starting hp from
@@ -109,23 +119,28 @@ never be ambiguous.
 
 ## The stash screen
 `src/ui/stashPanel.js` is the Bag ⇄ Stash ⇄ Equipment surface, opened with
-**I** anywhere, or **E** at the home-base stash (or `__openStash()`). Three
-columns:
+**I** anywhere, or **E** at the home-base Armory (or `__openStash()`).
 
-- **Run Bag** — click an item to move it to the stash; "Deposit all" empties it
-- **Stash** — click to equip into the best slot via `bestSlotFor()`, which
+Terminology is deliberate — **Haul** (found this run) → **Vault** (kept
+forever) → **Loadout** (worn). Internal field names still read `inventory` /
+`stash` / `equipment`; renaming those would be a save migration for no
+player-visible gain.
+
+Three columns:
+
+- **Haul** — click an item to store it; "Store all" empties it into the Vault
+- **Vault** — click to equip into the best slot via `bestSlotFor()`, which
   prefers an empty compatible slot and otherwise replaces your *weakest* one,
   so a second ring fills the free finger instead of overwriting the first
-- **Equipped** — click to return a piece to the stash; "Auto" runs `autoEquip()`
+- **Loadout** — click to return a piece to the Vault; "Best" runs `autoEquip()`
 
 It reads the canonical sources directly (SimState bag, profile stash/loadout)
 and routes every mutation through the pure helpers in `sim/inventory.js`, so
 the panel owns no state of its own. It deliberately does **not** touch the
 legacy `InventoryManager`.
 
-Gear changes apply **immediately** — the panel reads and writes live run
-state (`getEquipment()` / `onChange({ equipment })`), and the host mirrors the
-loadout onto the profile so it survives a reload mid-run.
+The panel takes `canEquip()` and renders the Loadout column read-only when it
+returns false (i.e. mid-run), with the reason stated in the header.
 
 ## One item pipeline, one gear screen
 The legacy layer used to roll its own item on every kill with `Math.random()`

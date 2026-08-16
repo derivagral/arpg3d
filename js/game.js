@@ -10,7 +10,7 @@ class Game {
         this.camera = this.sceneManager.getCamera();
 
         // Initialize player
-        this.player = new Player(this.scene);
+        this.player = new Player(this.scene, this);
 
         // Initialize managers that depend on game reference
         this.projectileManager = new ProjectileManager(this);

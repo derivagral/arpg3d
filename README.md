@@ -23,7 +23,7 @@ sim/              Pure game logic — zero browser deps, Node-importable
   gold.js         Kill drop table, gate reroll costs
   profile.js      Per-character meta: echoes, upgrade board, achievement unlocks
   items.js        Seeded item generation: kinds, rarities, drop tables
-  inventory.js    Bounded containers (bag/stash), equipment, auto-equip
+  inventory.js    Bounded containers (haul/vault), loadout, auto-equip
   movement.js     Arena bounds, idle movement policies, manual override
   gate.js         Gate generation (2-3 options), resolution, gold reroll
   engine.js       tick(state, deltaMs, input) -> newState
@@ -83,12 +83,12 @@ reached, a bonus for beating your record, plus any achievements earned. Then a
 fresh run starts from a new meta snapshot. Same seed *and the same input
 sequence* replay identically.
 
-**Items**: kills drop seeded items into a 48-slot run bag. When the run ends the
-haul moves into the character's 240-slot **stash**, which persists forever.
-Equipment is live run state seeded from the character's loadout, so **swapping
-gear applies immediately** — finding an upgrade and feeling it is the
-active-play payoff. The run's final loadout carries back to the character.
-See `docs/sim/items.md`.
+**Items**: kills drop seeded items into your 48-slot **haul**. When the run ends
+the haul banks into the character's 240-slot **vault**, which persists forever.
+Your **loadout is fixed for the run** — the roguelite contract rather than the
+ARPG one. Gear is chosen at the home-base Armory between runs, and the run
+lifecycle is bound to the world: entering the combat zone starts a run,
+returning home or dying ends it and banks the haul. See `docs/sim/items.md`.
 
 **Meta**: a save slot is a **character**, not a run. Its profile (echoes, an
 upgrade board, achievement unlocks) survives death; runs are attempts inside
@@ -148,8 +148,8 @@ provider interface, and the trust boundaries.
 
 - **WASD / Arrow Keys** — move player (overrides the idle movement policy while held)
 - **ESC / P** — pause
-- **I** — open the Bag/Stash/Equipment screen (ESC, I or E closes)
-- **E** — the same screen, when standing at the stash in Home Base
+- **I** — open the Armory: Haul / Vault / Loadout (ESC, I or E closes)
+- **E** — the same screen, when standing at the Armory in Home Base
 - Auto-attacks nearest enemy within range
 - Release the movement keys and the active idle policy takes back over
 
@@ -168,9 +168,9 @@ window.__board()              // upgrade board with costs and affordability
 window.__buy('vitality')      // spend echoes (applies to the NEXT run)
 window.__achievements()       // checklist; these grant movement policies
 window.__endRun()             // end the run now and bank its echoes
-window.__bag()                // items found this run
-window.__stash()              // stored items (persist across runs)
-window.__gear()               // equipped loadout + score
+window.__bag()                // haul: items found this run
+window.__stash()              // vault: stored items (persist across runs)
+window.__gear()               // loadout + score
 window.__equip(0, 'weapon')   // equip stash item (applies to the NEXT run)
 window.__autoEquip()          // greedily equip the best of everything
 window.__openStash()          // open the stash screen from anywhere

@@ -34,8 +34,8 @@ class AreaManager {
                     position: new BABYLON.Vector3(0, 0.75, 10),
                     color: new BABYLON.Color3(0.25, 0.55, 1.0),      // blue, vs the red portal
                     glowColor: new BABYLON.Color3(0.5, 0.8, 1.0),
-                    label: 'Stash',
-                    hint: 'Press E — store and equip gear'
+                    label: 'Armory',
+                    hint: 'Press E — store loot and set your loadout'
                 }
             },
             mobArea: {
@@ -114,6 +114,12 @@ class AreaManager {
             this.stopMobAreaTimer();
         }
 
+        // Tell the host, which binds the sim run's lifecycle to this: entering
+        // the combat zone starts a run, returning home ends it. That mapping is
+        // what makes "your loadout is fixed for the run" a coherent rule —
+        // home base is the only place gear can change, and it is a real place.
+        if (this.game.onAreaChanged) this.game.onAreaChanged(areaName);
+
         // Show transition message
         this.game.ui.showWaveIndicator(`Entering ${area.name}`);
 
@@ -144,6 +150,10 @@ class AreaManager {
 
         this.game.sceneManager.ground = ground;
         this.game.sceneManager.groundSize = area.groundSize;
+        // Player clamping reads this; without it the bounds stayed on the
+        // global CONFIG.world default and the smaller home base wasn't
+        // enclosed at all.
+        this.game.currentGroundSize = area.groundSize;
 
         // Update lighting
         if (this.game.sceneManager.hemisphericLight) {
@@ -465,14 +475,23 @@ class AreaManager {
             this.game.markerManager.clear();
         }
 
-        // Clear all enemies
-        if (this.game.enemies) {
-            this.game.enemies.forEach(enemy => {
+        // Clear all enemies.
+        //
+        // This used to write `this.game.enemies = []`, but game.enemies is an
+        // ALIAS captured once in the Game constructor — reassigning it left
+        // game.state.enemies (what the loop actually iterates) untouched, so
+        // the horde followed the player home, kept attacking, and kept
+        // dropping orbs in the base. Mutate the real array in place.
+        const enemies = this.game.state.enemies;
+        if (enemies) {
+            enemies.forEach(enemy => {
                 if (enemy.mesh) enemy.mesh.dispose();
                 if (enemy.healthBar) enemy.healthBar.dispose();
+                if (enemy.dispose) enemy.dispose();
             });
-            this.game.enemies = [];
+            enemies.length = 0;          // in place: keeps every alias valid
         }
+        this.game.simDropQueue.length = 0;   // drops belonged to that area
 
         // Clear all projectiles
         if (this.game.projectileManager) {

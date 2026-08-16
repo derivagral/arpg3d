@@ -138,7 +138,7 @@ export const resolveGate = (state, choiceIdx) => {
 
   // maxHp comes from the shared derivation, never from accumulation — the
   // new pool is whatever the full affix set implies (see sim/player.js).
-  const maxHp = statsForRun(state.runMeta, newAffixes, player.equipment).maxHp
+  const maxHp = statsForRun(state.runMeta, newAffixes).maxHp
   const maxHpGain = maxHp - player.maxHp
   const hp = Math.min(maxHp, player.hp + maxHpGain + maxHp * GATE_HEAL_FRACTION)
 
