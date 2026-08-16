@@ -28,6 +28,8 @@
 import { createState, tick, isRunOver } from '../../../sim/engine.js'
 import { MOVE_POLICIES } from '../../../sim/movement.js'
 import {
+  createInventory,
+  addItems,
   autoEquip as autoEquipItems,
   equipFrom,
   unequipTo,
@@ -111,8 +113,10 @@ export async function mount(container, host) {
   // never reads it directly — it only ever sees the runMeta snapshot taken
   // when a run starts.
   let profile = await store.getProfile(slotId)
-  // Guards double-banking when death and a portal home land together.
-  let runBanked = false
+  // Guards double-banking when death and a portal home land together. Starts
+  // true so the initial home-base transition can't bank a run that never ran
+  // (rather than relying on Game's constructor ordering).
+  let runBanked = true
 
   // Player-level preferences the shell owns. Read once at mount: settings
   // changing mid-run is a shell concern, not something the game watches.
@@ -179,9 +183,21 @@ export async function mount(container, host) {
     for (const a of unlocked) {
       console.log(`[unlocked] ${a.name} — ${a.desc}${a.grants ? ` → ${a.grants}` : ''}`)
     }
+    // Empty the haul of everything that actually banked. awardRun() COPIES
+    // items into the vault; without this the same items stay in the haul and
+    // show up in both columns — which reads as duplicated loot, and a
+    // subsequent "Store all" would genuinely duplicate them in the vault.
+    // Anything that didn't fit stays in the haul rather than vanishing, so
+    // the player can make room.
+    simState = {
+      ...simState,
+      player: { ...simState.player, inventory: addItems(createInventory(), overflow).container },
+    }
+    persist()
+
     if (stashed.length) console.log(`[vault] +${stashed.length} items`)
     if (overflow.length) {
-      console.warn(`[vault] FULL — ${overflow.length} item(s) could not be stored and were lost.`)
+      console.warn(`[vault] FULL — ${overflow.length} item(s) stayed in your haul; make room.`)
     }
     refreshItemNotice()
   }

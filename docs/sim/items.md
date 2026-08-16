@@ -97,6 +97,13 @@ run ends → awardRun() folds the haul into profile.stash
 home base → equip from stash → next run starts with it
 ```
 
+`awardRun()` **copies** the haul into the vault — it cannot empty the run's
+bag, because the bag is sim state and the profile is not. The caller must
+clear it, keeping any `overflow` that didn't fit. Forgetting leaves the same
+items in both columns, which reads as duplicated loot and duplicates for real
+on the next "Store all". `sim/profile.test.js` pins the accounting: every
+item ends up in exactly one of `stashed` or `overflow`.
+
 Items **survive death**. Losing them would make the idle half punishing, and
 the stash is the whole point of the loop. A full stash reports `overflow`
 rather than silently eating loot.
@@ -162,6 +169,18 @@ Sim-owned pickups carry `fromSim: true`. They never re-enter the legacy bag
 (the item would exist twice) and are never blocked by the legacy bag being
 full. `ItemGenerator` in `js/items.js` is now unused by the drop path.
 
+## Movement policies are dev-console only
+`input.movePolicy` defaults to `center` and is only reachable via
+`window.__setMovePolicy()`. There is no in-game UI for it yet, and — more
+importantly — `syncSimToRender()` is still an empty stub, so the sim's player
+(the one policies move) is not the player you see. The rendered player is the
+legacy WASD one. Policies therefore shape the headless run's outcome, not
+anything on screen.
+
+Wiring the rendered player to `simState.player.x/z` is the next real step in
+the render port; until then the policy ladder is a balance model with no
+visible expression.
+
 ## Dev console
 ```js
 window.__bag()            // items found in the current run
@@ -181,5 +200,6 @@ window.__stashItem(i)     // move a bag item straight to the stash
   was removed with the rest of that screen and hasn't been rebuilt on the new
   view.
 - No crafting, no vendor, no item-level rarity bonuses per zone.
-- Stash overflow drops loot on run end (reported in console). A real "overflow
-  tab" or forced cleanup prompt is the eventual fix.
+- Vault overflow stays in the haul with a console warning rather than being
+  destroyed, but a new run recreates the haul — so it is lost if you don't
+  make room before heading out. A real overflow tab is the eventual fix.
