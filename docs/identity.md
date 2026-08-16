@@ -96,6 +96,18 @@ Identity-only, public client, no backend. It runs on GitHub Pages as-is.
 - **No password field, ever.** The player types a handle. We resolve handle →
   DID → PDS and redirect; they authenticate on their own server. This app never
   sees a credential.
+- **A handle is not an email, and this is the #1 way sign-in "fails".** The
+  Bluesky app signs you in with an email and a password; OAuth cannot. There is
+  no public mapping from `you@example.com` to an account — that lookup only
+  exists inside your own PDS's user table — so the resolver's honest answer to
+  an email is `Failed to resolve identity: you@example.com`, which reads like a
+  bug and is not one. `src/identity/loginInput.js` catches this before the
+  OAuth library is even downloaded and answers with what to type instead.
+  The resolver accepts three forms: a **handle** (`alice.bsky.social`), a
+  **DID** (`did:plc:…`), or a **server URL** (`https://bsky.social`) — that
+  last one being the escape hatch for someone who does not remember their
+  handle, since they can then sign in at their server with the email and
+  password they do remember.
 - Sessions (DPoP keys included) live in IndexedDB and refresh themselves, so
   sign-in is persistent-until-revoked rather than ephemeral. "Forget me" is
   `manager.forgetGuest()` plus sign-out.
@@ -118,15 +130,20 @@ Identity-only, public client, no backend. It runs on GitHub Pages as-is.
    ```
 
    Both default to a root-served site.
-   `.github/workflows/deploy.yml` derives them from the repository (handling
-   the `<owner>.github.io` user-site case) and then **asserts** that the built
-   `client_id` equals the document's own URL and that the callback file exists,
-   failing the deploy rather than publishing a site whose sign-in is quietly
-   broken. Using a custom domain means editing `SITE_ORIGIN` in that workflow
-   and setting the base to `/`.
+   `.github/workflows/deploy.yml` takes them from `actions/configure-pages`,
+   which reports where the site is actually served from — so a user site, a
+   project site under `/<repo>/` and a custom domain all work with no edit to
+   the workflow. It then **asserts** that the built `client_id` equals the
+   document's own URL and that the callback file exists, failing the deploy
+   rather than publishing a site whose sign-in is quietly broken.
 
-   Deploying requires one manual step that cannot be done from code: repo
-   **Settings → Pages → Source → "GitHub Actions"**.
+   That same step also enables Pages and sets its source to GitHub Actions on
+   the first run. Before it existed, a repo where that had never been set by
+   hand built fine and then failed with `Failed to create deployment
+   (status: 404)` from `deploy-pages` — the deployment endpoint does not exist
+   until a Pages site does, and the 404 does not say so. The manual equivalent,
+   if that step is ever refused, is **Settings → Pages → Source → "GitHub
+   Actions"**.
 
 3. **Local dev must be browsed at `127.0.0.1`, not `localhost`.** The loopback
    `client_id` form uses the literal host `localhost`, but the redirect URI must
@@ -134,6 +151,39 @@ Identity-only, public client, no backend. It runs on GitHub Pages as-is.
    redirect on a *different origin*, where the IndexedDB session is not visible,
    and sign-in silently appears to do nothing. `vite.config.js` binds the dev
    server to `127.0.0.1` for exactly this reason.
+
+### Debugging a sign-in
+
+Sign-in spans four documents — the app, the player's PDS, `oauth/callback/`,
+and the app again — so the devtools console is close to useless on this path:
+each navigation clears it, and the failures that matter have their cause two
+documents before their symptom. `src/identity/trace.js` records the flow into
+a sessionStorage ring buffer instead, which is scoped to (origin, tab) and
+survives leaving for the PDS and coming back. It is always on; it holds
+identifiers only, never a token.
+
+```js
+__identity.report()      // the whole flow as pasteable text
+__identity.trace()       // the same entries as objects
+__identity.debug(true)   // also mirror to the console as it happens
+__identity.clear()
+```
+
+`?identityDebug=1` on any page turns console mirroring on and remembers it, so
+it is still in effect on the callback page. Failures are logged to the console
+regardless. When the callback page itself fails, it shows the trace on screen
+under "Details for a bug report".
+
+What the trace is really there to catch — all of which look identical from the
+outside ("sign-in just doesn't work") and are obvious the moment `client_id`,
+`redirectUri` and `origin` can be read back:
+
+| Entry | What it tells you |
+|---|---|
+| `atproto.client.load` | the `client_id`, `redirect_uri` and origin actually in use |
+| `atproto.signIn.rejected` | input never left the browser (an email, a typo) |
+| `manager.resolve.sessionGone` | there *was* a session and it did not restore |
+| `manager.completeRedirect.noProvider` | the callback cannot see the storage the sign-in started in — the localhost/127.0.0.1 trap |
 
 **Scope upgrades are not free.** If posting scores to a user's PDS ever becomes
 interesting, widening the scope requires revoke + re-auth for every existing

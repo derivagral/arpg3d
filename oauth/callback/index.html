@@ -40,11 +40,33 @@
         @media (prefers-reduced-motion: reduce) {
             .spinner { animation-duration: 3s; }
         }
-        #status { font-size: 15px; color: #b9bed0; }
+        #status { font-size: 15px; color: #b9bed0; max-width: 46ch; }
         #home {
             display: inline-block;
             margin-top: 18px;
             color: #7aa2f7;
+        }
+        #details {
+            margin-top: 22px;
+            text-align: left;
+            font-size: 13px;
+            color: #8b90a3;
+        }
+        #details summary { cursor: pointer; }
+        #trace {
+            margin: 10px 0 0;
+            padding: 10px;
+            max-width: min(78ch, 90vw);
+            max-height: 40vh;
+            overflow: auto;
+            background: #16181f;
+            border: 1px solid #262a36;
+            border-radius: 6px;
+            font-size: 11.5px;
+            line-height: 1.5;
+            white-space: pre-wrap;
+            word-break: break-word;
+            color: #b9bed0;
         }
     </style>
 </head>
@@ -53,6 +75,15 @@
         <div class="spinner" id="spinner"></div>
         <div id="status">Completing sign-in…</div>
         <a id="home" href="/" hidden>Back to the game</a>
+        <!--
+          Only revealed on failure. The sign-in flow spans four documents, so
+          the console here has already lost the two steps that explain most
+          failures; the trace is carried across in sessionStorage instead.
+        -->
+        <details id="details" hidden>
+            <summary>Details for a bug report</summary>
+            <pre id="trace"></pre>
+        </details>
     </div>
     <script type="module" src="/src/identity/callback.js"></script>
 </body>

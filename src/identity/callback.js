@@ -16,19 +16,44 @@
  */
 
 import { createShellIdentity, siteBase } from './boot.js'
+import { identityTrace } from './trace.js'
 
 const el = (id) => document.getElementById(id)
 
+/**
+ * Show the failure, and hand over the trace.
+ *
+ * This page is the far end of a flow that started on a different document, so
+ * "it didn't work" here is close to unactionable on its own — the cause is
+ * usually a client_id, redirect_uri or origin decided one navigation ago. The
+ * trace survived that navigation (sessionStorage, see trace.js), so it is put
+ * on screen, collapsed, as pasteable text.
+ */
 const fail = (message) => {
   const status = el('status')
   if (status) status.textContent = message
   el('spinner')?.remove()
   el('home')?.removeAttribute('hidden')
+
+  const details = el('details')
+  const dump = el('trace')
+  if (details && dump) {
+    dump.textContent = identityTrace.report()
+    details.removeAttribute('hidden')
+  }
 }
 
 const run = async () => {
   const home = el('home')
   if (home) home.href = siteBase()
+
+  identityTrace.install()
+  identityTrace.event('callback.page', {
+    origin: location.origin,
+    href: `${location.origin}${location.pathname}`,
+    hasCode: new URLSearchParams(location.search).has('code'),
+    hasError: new URLSearchParams(location.search).get('error') ?? 'none',
+  })
 
   try {
     const manager = createShellIdentity()
@@ -44,9 +69,27 @@ const run = async () => {
     // does not sit in history where a back-navigation would re-trigger it.
     location.replace(safeReturn(returnTo))
   } catch (err) {
-    console.error('[identity] callback failed:', err)
-    fail(err?.message ?? 'Sign-in could not be completed.')
+    identityTrace.error('callback.failed', err)
+    fail(playerMessage(err))
   }
+}
+
+/**
+ * One translation, for the one failure a player can actually reach by accident.
+ *
+ * "No redirect in progress" means this page cannot see the localStorage the
+ * sign-in was started from — a reloaded or bookmarked callback URL, a second
+ * tab, or dev browsed at localhost while the redirect landed on 127.0.0.1.
+ * All of them are "start again", and none of them are worth showing in those
+ * words. Everything else keeps its own message; the trace below has the rest.
+ * @returns {string}
+ */
+const playerMessage = (err) => {
+  if (/no redirect in progress/i.test(err?.message ?? '')) {
+    return 'This sign-in link has already been used, or was started in a different ' +
+      'window. Head back and try signing in again.'
+  }
+  return err?.message ?? 'Sign-in could not be completed.'
 }
 
 /**
