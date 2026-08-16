@@ -58,6 +58,25 @@ actually spawned something and that a short grace period has passed, so the
 gap before the first spawn — and a lull between spawns — aren't mistaken for
 a clear. The sim's own loop already advances immediately on wave clear.
 
+## World interaction prompts
+`areaManager.updateInteractionPrompt()` derives the prompt from current world
+state every frame — it does not track "shown" flags on portals or the stash.
+
+That matters because walking into a portal disposes every portal in the area.
+The earlier per-object flag design meant the object responsible for hiding the
+prompt was destroyed before it could, stranding the prompt on screen forever
+(a permanent `mobArea` label that followed you between areas). Deriving the
+prompt instead means a source that vanishes simply stops being found.
+
+Anything that needs to hide the prompt calls `clearInteractionPrompt()` rather
+than `ui.hideInteractionPrompt()` directly, so `activePrompt` never desyncs
+from what is on screen. The stash takes priority over a portal when you stand
+in both: it needs a keypress, so it's the one that won't move you unexpectedly.
+
+`spawnPortals()` spreads the whole portal config into `Portal` — cherry-picking
+fields there is what silently dropped `label`/`hint` and made prompts fall back
+to showing the raw destination id.
+
 ## Notices (nudges)
 `src/ui/notices.js` is a channel-based HUD rail in the bottom-right. A
 *channel* is one persistent thing worth acting on; it owns a badge and can

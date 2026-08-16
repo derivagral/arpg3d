@@ -112,7 +112,10 @@ class Game {
         if (!this.openStashPanel) return;
         this.state.atStash = true;
         this.state.stashOpen = true;
-        if (this.ui.hideInteractionPrompt) this.ui.hideInteractionPrompt();
+        // Go through the prompt owner, not the UI directly, or activePrompt
+        // would still read 'stash' and the prompt would never come back when
+        // the panel closes with the player still standing there.
+        this.areaManager.clearInteractionPrompt();
         this.openStashPanel();
     }
 
