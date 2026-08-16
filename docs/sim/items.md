@@ -54,11 +54,24 @@ never reshuffles the others.
 Sizes are deliberately generous — sorting gear should be the interesting part,
 not fighting for space. `CONFIG.inventory` mirrors these for the legacy UI.
 
-## Equipment lives on the profile, not the run
-You choose a loadout at home base between runs; it enters the run through the
-`runMeta` snapshot like every other piece of meta. A run never re-equips
-itself, so **gear cannot change mid-run** and replays stay reproducible
-(tested). Changing gear applies to the *next* run.
+## Equipment is live run state, seeded from the profile
+`SimState.player.equipment` holds the live loadout. It is **seeded** from
+`runMeta.equipment` at `createState()`, and the run's final loadout is written
+back to the profile when the run ends (`awardRun`).
+
+**Gear changes apply on the very next tick.** Finding an upgrade and feeling it
+immediately is the active-play payoff — deferring it to the next run made the
+best moment in an ARPG land like an idle-game purchase. The determinism rule is
+untouched by this: the run still never *reads* profile state (tested — editing
+the profile mid-run cannot reach the run), it just owns its own gear now, the
+same way it owns its bag.
+
+For a future replay system this means gear swaps must be recorded alongside
+inputs, exactly like gate picks and movement.
+
+**Equipping never heals.** A +maxHp item raises the ceiling but not current hp;
+otherwise equip/unequip would be an unlimited heal button. Gates heal because
+they're discrete; gear swaps are not.
 
 `statsForRun(runMeta, runAffixes)` in `sim/player.js` is the single place gear
 affixes and gate affixes are combined. `createState()` sizes starting hp from
@@ -96,7 +109,8 @@ never be ambiguous.
 
 ## The stash screen
 `src/ui/stashPanel.js` is the Bag ⇄ Stash ⇄ Equipment surface, opened with
-**E** at the home-base stash (or `__openStash()`). Three columns:
+**I** anywhere, or **E** at the home-base stash (or `__openStash()`). Three
+columns:
 
 - **Run Bag** — click an item to move it to the stash; "Deposit all" empties it
 - **Stash** — click to equip into the best slot via `bestSlotFor()`, which
@@ -109,13 +123,18 @@ and routes every mutation through the pure helpers in `sim/inventory.js`, so
 the panel owns no state of its own. It deliberately does **not** touch the
 legacy `InventoryManager`.
 
-Gear changes apply to the **next** run — the screen says so, because the
-snapshot rule makes it non-obvious.
+Gear changes apply **immediately** — the panel reads and writes live run
+state (`getEquipment()` / `onChange({ equipment })`), and the host mirrors the
+loadout onto the profile so it survives a reload mid-run.
 
-## One item pipeline
+## One item pipeline, one gear screen
 The legacy layer used to roll its own item on every kill with `Math.random()`
 and its own generator, so the loot on the ground had nothing to do with the
-loot you owned. Now:
+loot you owned. That generator (`js/items.js`), the legacy container
+(`js/inventory.js`), and the legacy inventory screen it fed have all been
+deleted — **I** now opens the same panel as **E**. One item system, one view.
+
+Now:
 
 ```
 sim rolls the item (seeded) → banked into the run bag → logs 'item_drop'
@@ -143,9 +162,9 @@ window.__stashItem(i)     // move a bag item straight to the stash
 ## Known gaps (deliberate — systems first, UX later)
 - No drag-and-drop, no filters, no multi-select; transfer is click-per-item
   plus the bulk buttons.
-- The legacy inventory screen (**I**) still exists over the legacy item
-  system. It is now the *only* place legacy items appear, since drops no
-  longer create them; it should be retired once its stat panel moves over.
+- No character-stats panel yet. The legacy inventory screen carried one; it
+  was removed with the rest of that screen and hasn't been rebuilt on the new
+  view.
 - No crafting, no vendor, no item-level rarity bonuses per zone.
 - Stash overflow drops loot on run end (reported in console). A real "overflow
   tab" or forced cleanup prompt is the eventual fix.

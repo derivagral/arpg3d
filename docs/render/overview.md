@@ -44,7 +44,9 @@ Behaviour that exists in both layers today, and must be changed in both:
 | Container sizes | `INVENTORY_SIZE`, `STASH_SIZE` | `CONFIG.inventory` |
 | Arena size | `ARENA_RADIUS` (23) | `areaManager` `groundSize` (69 / 46) |
 
-**Items are no longer mirrored** — the sim is the sole source. It rolls every
+**Items are no longer mirrored** — the sim is the sole source, and the legacy
+item system (`js/items.js`, `js/inventory.js`, the `#inventoryScreen` markup
+and its UI methods) has been deleted outright rather than left dormant. It rolls every
 drop and banks it; the render layer only *displays* drops drained from the
 sim's `item_drop` log events into `game.simDropQueue`. See docs/sim/items.md.
 

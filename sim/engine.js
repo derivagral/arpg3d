@@ -24,7 +24,7 @@ import { createPity } from './pity.js'
 import { generateGate, resolveGate, rerollGate } from './gate.js'
 import { rollGoldDrop } from './gold.js'
 import { rollItemDrop } from './items.js'
-import { createInventory, addItem } from './inventory.js'
+import { createInventory, addItem, hydrateEquipment } from './inventory.js'
 import { calcDamage, aggregateDamageModifiers } from './damage.js'
 import { autoPickGate } from './autopilot.js'
 import { resolveMove, clampToArena, ARENA_RADIUS } from './movement.js'
@@ -90,6 +90,7 @@ const waveForDepth = (depth) => {
  * @property {number} gold
  * @property {number} xp
  * @property {Object<string, number>} kills - per-enemy-type kill counts
+ * @property {object} equipment - live loadout; swaps apply on the next tick
  * @property {number} lastAttackTick - tick of last auto-attack
  */
 
@@ -130,7 +131,11 @@ export const createState = (seed, runMeta = runMetaFor(createProfile())) => {
   // geared run begins under-healed: baseForRun() applies meta upgrades but
   // not equipment affixes, so gear-granted maxHp would be missed here and
   // only appear on the first tick, leaving hp clamped below the new max.
-  const startStats = statsForRun(runMeta, [])
+  // Equipment is LIVE run state, seeded from the meta snapshot. Keeping it in
+  // the run (rather than reading runMeta every tick) is what lets a swap apply
+  // immediately — see docs/sim/items.md.
+  const equipment = hydrateEquipment(runMeta?.equipment)
+  const startStats = statsForRun(runMeta, [], equipment)
 
   return {
     seed,
@@ -154,6 +159,7 @@ export const createState = (seed, runMeta = runMetaFor(createProfile())) => {
       xp: 0,
       kills: {},
       inventory: createInventory(),
+      equipment,
       lastAttackTick: 0,
     },
 
@@ -258,7 +264,7 @@ export const tick = (state, deltaMs, input = {}) => {
   // Derive effective stats from the run's base (BASE_PLAYER + meta upgrades)
   // plus affixes. maxHp is a cache of the derived value — never accumulated
   // onto player state (see sim/player.js).
-  const stats = statsForRun(s.runMeta, player.affixes)
+  const stats = statsForRun(s.runMeta, player.affixes, player.equipment)
   player.maxHp = stats.maxHp
   player.hp = Math.min(player.hp, player.maxHp)
 
@@ -370,7 +376,7 @@ export const tick = (state, deltaMs, input = {}) => {
     if (nearest) {
       const dmgParams = {
         base: stats.damage,
-        ...aggregateDamageModifiers(allAffixes(s.runMeta, player.affixes)),
+        ...aggregateDamageModifiers(allAffixes(player.equipment, player.affixes)),
         rngState: rng
       }
       const [damage, nextRng, wasCrit] = calcDamage(dmgParams)

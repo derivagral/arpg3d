@@ -55,19 +55,23 @@ export const baseForRun = (runMeta) =>
   applyUpgrades(BASE_PLAYER, runMeta?.upgrades)
 
 /**
- * Every affix affecting the player: equipped gear (from the runMeta snapshot)
- * plus affixes picked at gates this run. Gear first so item mods read before
- * run mods in any UI that lists them.
+ * Every affix affecting the player: equipped gear plus affixes picked at gates
+ * this run. Gear first so item mods read before run mods in any UI.
  *
  * This is the ONE place the two sources are combined — see the stat-ownership
  * rule in docs/sim/engine.md.
  *
- * @param {object} runMeta
+ * @param {object} equipment - LIVE equipment (SimState.player.equipment)
  * @param {import('./affixes.js').Affix[]} runAffixes
  */
-export const allAffixes = (runMeta, runAffixes = []) =>
-  [...equippedAffixes(runMeta?.equipment), ...runAffixes]
+export const allAffixes = (equipment, runAffixes = []) =>
+  [...equippedAffixes(equipment), ...runAffixes]
 
-/** Effective stats for a run: base + upgrades, with gear and run affixes. */
-export const statsForRun = (runMeta, runAffixes = []) =>
-  derivePlayerStats(allAffixes(runMeta, runAffixes), baseForRun(runMeta))
+/**
+ * Effective stats for a run: base + meta upgrades, with gear and run affixes.
+ *
+ * `equipment` is live run state, so a swap applies on the very next tick.
+ * It defaults to the runMeta loadout, which is what a run starts wearing.
+ */
+export const statsForRun = (runMeta, runAffixes = [], equipment = runMeta?.equipment) =>
+  derivePlayerStats(allAffixes(equipment, runAffixes), baseForRun(runMeta))

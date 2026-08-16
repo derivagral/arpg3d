@@ -232,6 +232,10 @@ export const summarizeRun = (state) => ({
   // Items found this run. They survive death — losing them would make the
   // idle half punishing, and the stash is the whole point of the loop.
   items: (state.player.inventory ?? []).filter(Boolean),
+  // Whatever the run ended wearing is what the character owns — gear can be
+  // swapped mid-run now, so the profile must take the final state, not the
+  // loadout the run started with.
+  equipment: hydrateEquipment(state.player.equipment),
 })
 
 /**
@@ -257,6 +261,7 @@ export const awardRun = (profile, summary) => {
   let next = {
     ...profile,
     stash: haul.container,
+    equipment: summary.equipment ? hydrateEquipment(summary.equipment) : profile.equipment,
     echoes: profile.echoes + echoes.total,
     bestDepth: Math.max(profile.bestDepth, summary.depth),
     runs: profile.runs + 1,

@@ -139,12 +139,23 @@ export async function mount(container, host) {
 
   const stashPanel = createStashPanel({
     getBag: () => simState.player.inventory,
+    getEquipment: () => simState.player.equipment,
     getProfile: () => profile,
-    onChange: ({ inventory, profile: nextProfile }) => {
-      if (inventory) {
-        simState = { ...simState, player: { ...simState.player, inventory } }
+    onChange: ({ inventory, equipment, profile: nextProfile }) => {
+      if (inventory || equipment) {
+        simState = {
+          ...simState,
+          player: {
+            ...simState.player,
+            ...(inventory ? { inventory } : {}),
+            ...(equipment ? { equipment } : {}),
+          },
+        }
       }
-      if (nextProfile) profile = nextProfile
+      // Mirror the loadout onto the profile so it survives a reload mid-run;
+      // awardRun() also captures the run's final gear when the run ends.
+      if (equipment) profile = { ...(nextProfile ?? profile), equipment }
+      else if (nextProfile) profile = nextProfile
       persist()
     },
     onClose: () => {

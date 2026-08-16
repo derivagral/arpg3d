@@ -36,7 +36,7 @@ class PickupManager {
         return pickup;
     }
 
-    update(playerMesh, playerStats, onXPCollected, onHealthCollected, onItemCollected, onGoldCollected, inventoryFull) {
+    update(playerMesh, playerStats, onXPCollected, onHealthCollected, onItemCollected, onGoldCollected) {
         if (this.game.state.paused) return;
 
         this.pickups = this.pickups.filter(pickup => {
@@ -58,14 +58,9 @@ class PickupManager {
             );
 
             // Magnetic attraction (skip for items if inventory is full)
-            // Sim-owned drops are already banked, so a full legacy bag must
-            // never stop them being picked up.
-            const fromSim = pickup.type === 'item' && pickup.value && pickup.value.fromSim;
-            const autoDestroyEnabled = pickup.type === 'item'
-                && this.game.inventoryManager
-                && this.game.inventoryManager.isAutoDestroyEnabled(pickup.value && pickup.value.rarity);
-            const shouldAttract = pickup.type !== 'item' || fromSim || !inventoryFull || autoDestroyEnabled;
-            if (shouldAttract && distToPlayer < playerStats.magnetRadius) {
+            // Every drop is sim-owned and already banked, so nothing can block
+            // a pickup — the mesh is just the flourish.
+            if (distToPlayer < playerStats.magnetRadius) {
                 const direction = playerMesh.position.subtract(pickup.position);
                 direction.y = 0;
                 direction.normalize();
@@ -91,14 +86,9 @@ class PickupManager {
                     pickup.dispose();
                     return false;
                 } else if (pickup.type === 'item') {
-                    if (onItemCollected) {
-                        const collected = onItemCollected(pickup.value);
-                        if (collected !== false) {
-                            pickup.dispose();
-                            return false;
-                        }
-                    }
-                    // Keep item on ground when inventory is full and auto-destroy is disabled
+                    if (onItemCollected) onItemCollected(pickup.value);
+                    pickup.dispose();
+                    return false;
                 }
             }
 

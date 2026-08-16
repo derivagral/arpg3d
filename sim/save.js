@@ -108,6 +108,7 @@ export const serializeSim = (state) => ({
     xp: state.player.xp,
     kills: { ...state.player.kills },
     inventory: [...(state.player.inventory ?? [])],
+    equipment: hydrateEquipment(state.player.equipment),
     lastAttackTick: state.player.lastAttackTick,
     affixes: state.player.affixes.map(serializeAffix),
   },
@@ -175,6 +176,8 @@ export const hydrateSim = (snap) => {
       kills: { ...(snap.player.kills ?? {}) },
       // pre-item snapshots resume with an empty bag
       inventory: hydrateContainer(snap.player.inventory, INVENTORY_SIZE),
+      // pre-live-equipment snapshots fall back to the loadout they started with
+      equipment: hydrateEquipment(snap.player.equipment ?? snap.runMeta?.equipment),
       lastAttackTick: snap.player.lastAttackTick,
       affixes,
     },

@@ -45,7 +45,7 @@ js/               Legacy Babylon.js render layer (browser globals)
   game.js         Babylon.js game loop (coexists with sim tick)
   player.js       Player mesh, movement, input
   enemies.js      Enemy creation and behavior
-  ...             (14 files total)
+  ...             (12 files — legacy item/inventory system removed)
 
 docs/             Subsystem docs for scoped context management
   AGENTS.md       Scope map — which docs to load per task type
@@ -85,9 +85,10 @@ sequence* replay identically.
 
 **Items**: kills drop seeded items into a 48-slot run bag. When the run ends the
 haul moves into the character's 240-slot **stash**, which persists forever.
-Equipment lives on the profile and enters a run through the same immutable
-snapshot as the rest of meta, so gear can't change mid-run. See
-`docs/sim/items.md`.
+Equipment is live run state seeded from the character's loadout, so **swapping
+gear applies immediately** — finding an upgrade and feeling it is the
+active-play payoff. The run's final loadout carries back to the character.
+See `docs/sim/items.md`.
 
 **Meta**: a save slot is a **character**, not a run. Its profile (echoes, an
 upgrade board, achievement unlocks) survives death; runs are attempts inside
@@ -147,8 +148,8 @@ provider interface, and the trust boundaries.
 
 - **WASD / Arrow Keys** — move player (overrides the idle movement policy while held)
 - **ESC / P** — pause
-- **I** — inventory
-- **E** — open the Bag/Stash/Equipment screen (at the stash in Home Base; ESC or E closes)
+- **I** — open the Bag/Stash/Equipment screen (ESC, I or E closes)
+- **E** — the same screen, when standing at the stash in Home Base
 - Auto-attacks nearest enemy within range
 - Release the movement keys and the active idle policy takes back over
 

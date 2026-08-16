@@ -62,93 +62,13 @@
         <div class="upgrade-hint">Click to select</div>
     </div>
 
-    <!-- Inventory Screen -->
-    <div id="inventoryScreen">
-        <div class="inventory-container">
-            <!-- Left side: Stats -->
-            <div class="inventory-stats">
-                <h2>Character Stats</h2>
-                <div class="stat-line">
-                    <span class="stat-label">Level:</span>
-                    <span class="stat-value" id="inv-level">1</span>
-                </div>
-                <div class="stat-line">
-                    <span class="stat-label">Gold:</span>
-                    <span class="stat-value" id="inv-gold" style="color: #ffd700;">0</span>
-                </div>
-                <div class="stat-line">
-                    <span class="stat-label">Health:</span>
-                    <span class="stat-value" id="inv-health">100 / 100</span>
-                </div>
-                <div class="stat-line">
-                    <span class="stat-label">Damage:</span>
-                    <span class="stat-value" id="inv-damage">10</span>
-                </div>
-                <div class="stat-line">
-                    <span class="stat-label">Attack Speed:</span>
-                    <span class="stat-value" id="inv-attackSpeed">1000ms</span>
-                </div>
-                <div class="stat-line">
-                    <span class="stat-label">Speed:</span>
-                    <span class="stat-value" id="inv-speed">0.15</span>
-                </div>
-                <div class="stat-line">
-                    <span class="stat-label">Attack Range:</span>
-                    <span class="stat-value" id="inv-range">8</span>
-                </div>
-                <div class="stat-line">
-                    <span class="stat-label">Crit Chance:</span>
-                    <span class="stat-value" id="inv-crit">0%</span>
-                </div>
-                <div class="stat-line">
-                    <span class="stat-label">Life Steal:</span>
-                    <span class="stat-value" id="inv-lifesteal">0</span>
-                </div>
-                <div class="stat-line">
-                    <span class="stat-label">Piercing:</span>
-                    <span class="stat-value" id="inv-piercing">0</span>
-                </div>
-                <div class="stat-line">
-                    <span class="stat-label">Regen:</span>
-                    <span class="stat-value" id="inv-regen">0/s</span>
-                </div>
-
-                <!-- Equipment Section -->
-                <h2 style="margin-top: 20px;">Equipment</h2>
-                <div class="equipment-grid" id="equipmentGrid">
-                    <!-- Equipment slots will be generated here -->
-                </div>
-            </div>
-
-            <!-- Right side: Inventory -->
-            <div class="inventory-items">
-                <div class="inventory-header">
-                    <h2>Inventory</h2>
-                    <div class="salvage-bar" id="salvageBar">
-                        <span class="salvage-label">Auto-destroy:</span>
-                        <button class="salvage-btn salvage-common" data-rarity="common">Common</button>
-                        <button class="salvage-btn salvage-uncommon" data-rarity="uncommon">Uncommon</button>
-                        <button class="salvage-btn salvage-rare" data-rarity="rare">Rare</button>
-                    </div>
-                </div>
-                <div class="inventory-grid" id="inventoryGrid">
-                    <!-- Inventory slots will be generated here -->
-                </div>
-            </div>
-        </div>
-        <div class="inventory-hint">Press 'I' to close | Left-click item to equip | Right-click item to discard</div>
-    </div>
-
     <!-- Item Tooltip (reused for all hover) -->
-    <div id="itemTooltip" class="item-tooltip"></div>
 
     <!-- Babylon.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/babylonjs/7.0.0/babylon.js"></script>
     
     <!-- Game Scripts -->
     <script src="js/config.js"></script>
-    <script src="js/items.js"></script>
-    <script src="js/inventory.js"></script>
     <script src="js/enemies.js"></script>
     <script src="js/spawnManager.js"></script>
     <script src="js/weapons.js"></script>

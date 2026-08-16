@@ -79,12 +79,13 @@ const css = `
 /**
  * @param {{
  *   getBag: () => (object|null)[],
+ *   getEquipment: () => object,
  *   getProfile: () => object,
- *   onChange: (patch: { inventory?: (object|null)[], profile?: object }) => void,
+ *   onChange: (patch: { inventory?, equipment?, profile? }) => void,
  *   onClose?: () => void,
  * }} opts
  */
-export const createStashPanel = ({ getBag, getProfile, onChange, onClose }) => {
+export const createStashPanel = ({ getBag, getEquipment, getProfile, onChange, onClose }) => {
   const style = document.createElement('style')
   style.textContent = css
   document.head.appendChild(style)
@@ -94,8 +95,8 @@ export const createStashPanel = ({ getBag, getProfile, onChange, onClose }) => {
   root.innerHTML = `
     <div class="sp-head">
       <span class="sp-title">Stash</span>
-      <span class="sp-sub">Click an item to move it. Gear applies to your NEXT run.</span>
-      <span class="sp-close">ESC / E to close</span>
+      <span class="sp-sub">Click an item to move it. Gear changes apply immediately.</span>
+      <span class="sp-close">ESC / I / E to close</span>
     </div>
     <div class="sp-body">
       <div class="sp-col">
@@ -120,6 +121,7 @@ export const createStashPanel = ({ getBag, getProfile, onChange, onClose }) => {
     <div class="sp-foot">
       <span>Bag → click to stash</span>
       <span>Stash → click to equip (best free slot)</span>
+      <span>Bag → equip via Auto</span>
       <span>Equipped → click to unstash</span>
       <span id="spNote"></span>
     </div>`
@@ -179,7 +181,9 @@ export const createStashPanel = ({ getBag, getProfile, onChange, onClose }) => {
     const bag = getBag()
     const profile = getProfile()
     const stash = profile.stash
-    const equipment = profile.equipment
+    // Equipment is LIVE run state, not profile state — swaps take effect on
+    // the next tick rather than the next run.
+    const equipment = getEquipment()
 
     // Bag → stash
     const bagEl = $('spBag')
@@ -203,10 +207,10 @@ export const createStashPanel = ({ getBag, getProfile, onChange, onClose }) => {
         const target = bestSlotFor(item, equipment)
         const res = equipFrom(equipment, stash, i, target)
         if (!res.equipped) { note = `Cannot equip: ${res.reason}`; render(); return }
-        note = `Equipped ${itemName(res.equipped)} → ${SLOT_LABELS[target]} (next run)`
-        onChange({ profile: { ...profile, equipment: res.equipment, stash: res.container } })
+        note = `Equipped ${itemName(res.equipped)} → ${SLOT_LABELS[target]}`
+        onChange({ equipment: res.equipment, profile: { ...profile, stash: res.container } })
         render()
-      }, 'Click → equip (applies next run)'))
+      }, 'Click → equip (applies immediately)'))
     })
     $('spStashCount').textContent = `${countItems(stash)} / ${stash.length}`
 
@@ -231,7 +235,7 @@ export const createStashPanel = ({ getBag, getProfile, onChange, onClose }) => {
           const res = unequipTo(equipment, stash, slot)
           if (!res.removed) { note = 'Stash is full.'; render(); return }
           note = ''
-          onChange({ profile: { ...profile, equipment: res.equipment, stash: res.container } })
+          onChange({ equipment: res.equipment, profile: { ...profile, stash: res.container } })
           render()
         })
       }
@@ -267,11 +271,11 @@ export const createStashPanel = ({ getBag, getProfile, onChange, onClose }) => {
 
   $('spAuto').addEventListener('click', () => {
     const profile = getProfile()
-    const res = autoEquip(profile.equipment, profile.stash)
+    const res = autoEquip(getEquipment(), profile.stash)
     note = res.changes.length
-      ? `Equipped ${res.changes.length} upgrade(s) — applies next run.`
+      ? `Equipped ${res.changes.length} upgrade(s).`
       : 'Nothing in the stash beats what you have.'
-    onChange({ profile: { ...profile, equipment: res.equipment, stash: res.container } })
+    onChange({ equipment: res.equipment, profile: { ...profile, stash: res.container } })
     render()
   })
 
@@ -283,12 +287,13 @@ export const createStashPanel = ({ getBag, getProfile, onChange, onClose }) => {
   }
   root.querySelector('.sp-close').addEventListener('click', close)
 
-  // ESC or E closes. Captured so the legacy key handler (which would unpause
-  // on ESC) never sees it while the panel owns the screen.
+  // ESC, I or E closes — whichever key you opened it with also shuts it.
+  // Captured so the game's key handler (which would unpause on ESC) never
+  // sees it while the panel owns the screen.
   window.addEventListener('keydown', (e) => {
     if (!root.classList.contains('show')) return
     const k = e.key.toLowerCase()
-    if (k === 'escape' || k === 'e') {
+    if (k === 'escape' || k === 'e' || k === 'i') {
       e.preventDefault()
       e.stopPropagation()
       close()
