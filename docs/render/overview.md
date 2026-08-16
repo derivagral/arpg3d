@@ -42,12 +42,83 @@ Behaviour that exists in both layers today, and must be changed in both:
 | Surround limit | `ENGAGEMENT_SLOTS` | `CONFIG.combat.engagementSlots` |
 | Enemy/player balance stats | `ENEMY_TEMPLATES`, `BASE_PLAYER` | `CONFIG.enemies.types`, `CONFIG.player` |
 | Container sizes | `INVENTORY_SIZE`, `STASH_SIZE` | `CONFIG.inventory` |
+| Arena size | `ARENA_RADIUS` (23) | `areaManager` `groundSize` (69 / 46) |
 
-**Items are no longer mirrored** — the sim is the sole source. It rolls every
+**Items are no longer mirrored** — the sim is the sole source, and the legacy
+item system (`js/items.js`, `js/inventory.js`, the `#inventoryScreen` markup
+and its UI methods) has been deleted outright rather than left dormant. It rolls every
 drop and banks it; the render layer only *displays* drops drained from the
 sim's `item_drop` log events into `game.simDropQueue`. See docs/sim/items.md.
 
 `sim/` is canonical: when they disagree, sim wins and the legacy config follows.
+
+## Wave pacing
+The legacy wave system advances when its timer expires **or** as soon as the
+field is clear (`CONFIG.spawn.clearedWaveAdvance`), so a cleared arena doesn't
+leave the player waiting out the clock. Early advance requires that the wave
+actually spawned something and that a short grace period has passed, so the
+gap before the first spawn — and a lull between spawns — aren't mistaken for
+a clear. The sim's own loop already advances immediately on wave clear.
+
+## Run lifecycle is bound to the area
+The sim only ticks inside the combat zone. Entering it starts a run
+(`createState` from the profile snapshot); returning home or dying banks it
+(`awardRun`) and returns the player to base. Home base has no run ticking,
+which is what makes "your loadout is fixed for the run" true rather than
+merely asserted — see docs/sim/items.md.
+
+`areaManager.transitionToArea()` calls `game.onAreaChanged(areaName)`; the
+game module owns the lifecycle, the render layer just reports the move.
+
+`cleanupArea()` clears enemies by mutating `game.state.enemies` **in place**.
+It used to assign `this.game.enemies = []`, but that is an alias captured once
+in the Game constructor — reassigning it left the real array untouched, so the
+horde followed the player home, kept attacking, and kept dropping orbs in the
+base. Anything clearing a shared array here must mutate, not rebind.
+
+Player bounds read `game.currentGroundSize`, set per area. The global
+`CONFIG.world.groundSize` is only a fallback; using it directly meant the
+smaller home base was not enclosed.
+
+## World interaction prompts
+`areaManager.updateInteractionPrompt()` derives the prompt from current world
+state every frame — it does not track "shown" flags on portals or the stash.
+
+That matters because walking into a portal disposes every portal in the area.
+The earlier per-object flag design meant the object responsible for hiding the
+prompt was destroyed before it could, stranding the prompt on screen forever
+(a permanent `mobArea` label that followed you between areas). Deriving the
+prompt instead means a source that vanishes simply stops being found.
+
+Anything that needs to hide the prompt calls `clearInteractionPrompt()` rather
+than `ui.hideInteractionPrompt()` directly, so `activePrompt` never desyncs
+from what is on screen. The stash takes priority over a portal when you stand
+in both: it needs a keypress, so it's the one that won't move you unexpectedly.
+
+`spawnPortals()` spreads the whole portal config into `Portal` — cherry-picking
+fields there is what silently dropped `label`/`hint` and made prompts fall back
+to showing the raw destination id.
+
+## Notices (nudges)
+`src/ui/notices.js` is a channel-based HUD rail in the bottom-right. A
+*channel* is one persistent thing worth acting on; it owns a badge and can
+flash when its value changes.
+
+Two levels of loudness, kept separate on purpose:
+- **badge** — persistent state ("3 new"). Truthful, never animated.
+- **flash** — a one-shot pulse when the value *rises*. Attention, not state.
+
+A badge that animates forever becomes wallpaper; a flash that persists becomes
+clutter. `set()` only flashes when the count actually increases, so
+re-rendering the same state never nags.
+
+Only the `inventory` channel exists today, counting run-bag items with a uid
+above `profile.seenItemUid`. Opening the gear screen *is* the acknowledgement
+— there is no separate dismiss — and the watermark persists, so the badge
+survives a reload. Buff timers and combat alerts are deliberately absent:
+they are transient, they compete with the action, and they want positioning
+near the player rather than a corner rail. The module is shaped to take them
+as channels when that content exists.
 
 ## Input flow
 Manual movement is an **input to the sim**, not a render-layer behaviour:

@@ -54,11 +54,34 @@ never reshuffles the others.
 Sizes are deliberately generous — sorting gear should be the interesting part,
 not fighting for space. `CONFIG.inventory` mirrors these for the legacy UI.
 
-## Equipment lives on the profile, not the run
-You choose a loadout at home base between runs; it enters the run through the
-`runMeta` snapshot like every other piece of meta. A run never re-equips
-itself, so **gear cannot change mid-run** and replays stay reproducible
-(tested). Changing gear applies to the *next* run.
+## The loadout is static per run
+Gear lives on the **profile** and reaches a run only through the `runMeta`
+snapshot taken at `createState()`. It cannot change while the run is alive.
+
+This is the roguelite contract (Slay the Spire, Rogue Genesia) rather than the
+ARPG one: what you take in is what you fight with. It was chosen over live
+swapping for a concrete reason — reproducing a run means replaying its
+decisions, and a mid-run equip is a decision *about an item the log doesn't
+know the stats of yet*. Making the loadout an input to the run instead of an
+event inside it keeps `run = f(seed, runMeta, inputs)` genuinely small.
+
+A run therefore carries **no equipment of its own** — a second copy on the
+player would only be somewhere for the two to disagree (tested).
+
+### Where the player actually equips
+Because gear is fixed per run, equipping is a between-runs planning action, and
+the run lifecycle is bound to the world:
+
+| Event | Run |
+|-------|-----|
+| Enter the combat zone | `createState(seed, runMetaFor(profile))` — a new run wearing what you just chose |
+| Return home / die | `awardRun()` — haul banks, echoes pay out |
+| At home base | no run ticking; the loadout is editable |
+
+The sim only ticks inside the combat zone. That's what makes "your loadout is
+locked for the run" true rather than merely stated, and it gives home base a
+job beyond being a lobby. The Armory's Loadout column is read-only during a
+run — there's no action to offer, so it doesn't pretend there is.
 
 `statsForRun(runMeta, runAffixes)` in `sim/player.js` is the single place gear
 affixes and gate affixes are combined. `createState()` sizes starting hp from
@@ -73,6 +96,13 @@ kill → rollItemDrop → run inventory (full bag logs 'item_lost')
 run ends → awardRun() folds the haul into profile.stash
 home base → equip from stash → next run starts with it
 ```
+
+`awardRun()` **copies** the haul into the vault — it cannot empty the run's
+bag, because the bag is sim state and the profile is not. The caller must
+clear it, keeping any `overflow` that didn't fit. Forgetting leaves the same
+items in both columns, which reads as duplicated loot and duplicates for real
+on the next "Store all". `sim/profile.test.js` pins the accounting: every
+item ends up in exactly one of `stashed` or `overflow`.
 
 Items **survive death**. Losing them would make the idle half punishing, and
 the stash is the whole point of the loop. A full stash reports `overflow`
@@ -96,26 +126,37 @@ never be ambiguous.
 
 ## The stash screen
 `src/ui/stashPanel.js` is the Bag ⇄ Stash ⇄ Equipment surface, opened with
-**E** at the home-base stash (or `__openStash()`). Three columns:
+**I** anywhere, or **E** at the home-base Armory (or `__openStash()`).
 
-- **Run Bag** — click an item to move it to the stash; "Deposit all" empties it
-- **Stash** — click to equip into the best slot via `bestSlotFor()`, which
+Terminology is deliberate — **Haul** (found this run) → **Vault** (kept
+forever) → **Loadout** (worn). Internal field names still read `inventory` /
+`stash` / `equipment`; renaming those would be a save migration for no
+player-visible gain.
+
+Three columns:
+
+- **Haul** — click an item to store it; "Store all" empties it into the Vault
+- **Vault** — click to equip into the best slot via `bestSlotFor()`, which
   prefers an empty compatible slot and otherwise replaces your *weakest* one,
   so a second ring fills the free finger instead of overwriting the first
-- **Equipped** — click to return a piece to the stash; "Auto" runs `autoEquip()`
+- **Loadout** — click to return a piece to the Vault; "Best" runs `autoEquip()`
 
 It reads the canonical sources directly (SimState bag, profile stash/loadout)
 and routes every mutation through the pure helpers in `sim/inventory.js`, so
 the panel owns no state of its own. It deliberately does **not** touch the
 legacy `InventoryManager`.
 
-Gear changes apply to the **next** run — the screen says so, because the
-snapshot rule makes it non-obvious.
+The panel takes `canEquip()` and renders the Loadout column read-only when it
+returns false (i.e. mid-run), with the reason stated in the header.
 
-## One item pipeline
+## One item pipeline, one gear screen
 The legacy layer used to roll its own item on every kill with `Math.random()`
 and its own generator, so the loot on the ground had nothing to do with the
-loot you owned. Now:
+loot you owned. That generator (`js/items.js`), the legacy container
+(`js/inventory.js`), and the legacy inventory screen it fed have all been
+deleted — **I** now opens the same panel as **E**. One item system, one view.
+
+Now:
 
 ```
 sim rolls the item (seeded) → banked into the run bag → logs 'item_drop'
@@ -127,6 +168,18 @@ sim rolls the item (seeded) → banked into the run bag → logs 'item_drop'
 Sim-owned pickups carry `fromSim: true`. They never re-enter the legacy bag
 (the item would exist twice) and are never blocked by the legacy bag being
 full. `ItemGenerator` in `js/items.js` is now unused by the drop path.
+
+## Movement policies are dev-console only
+`input.movePolicy` defaults to `center` and is only reachable via
+`window.__setMovePolicy()`. There is no in-game UI for it yet, and — more
+importantly — `syncSimToRender()` is still an empty stub, so the sim's player
+(the one policies move) is not the player you see. The rendered player is the
+legacy WASD one. Policies therefore shape the headless run's outcome, not
+anything on screen.
+
+Wiring the rendered player to `simState.player.x/z` is the next real step in
+the render port; until then the policy ladder is a balance model with no
+visible expression.
 
 ## Dev console
 ```js
@@ -143,9 +196,10 @@ window.__stashItem(i)     // move a bag item straight to the stash
 ## Known gaps (deliberate — systems first, UX later)
 - No drag-and-drop, no filters, no multi-select; transfer is click-per-item
   plus the bulk buttons.
-- The legacy inventory screen (**I**) still exists over the legacy item
-  system. It is now the *only* place legacy items appear, since drops no
-  longer create them; it should be retired once its stat panel moves over.
+- No character-stats panel yet. The legacy inventory screen carried one; it
+  was removed with the rest of that screen and hasn't been rebuilt on the new
+  view.
 - No crafting, no vendor, no item-level rarity bonuses per zone.
-- Stash overflow drops loot on run end (reported in console). A real "overflow
-  tab" or forced cleanup prompt is the eventual fix.
+- Vault overflow stays in the haul with a console warning rather than being
+  destroyed, but a new run recreates the haul — so it is lost if you don't
+  make room before heading out. A real overflow tab is the eventual fix.

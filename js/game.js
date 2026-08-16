@@ -10,13 +10,12 @@ class Game {
         this.camera = this.sceneManager.getCamera();
 
         // Initialize player
-        this.player = new Player(this.scene);
+        this.player = new Player(this.scene, this);
 
         // Initialize managers that depend on game reference
         this.projectileManager = new ProjectileManager(this);
         this.pickupManager = new PickupManager(this);
         this.spawnManager = new SpawnManager(this, CONFIG.spawn);
-        this.inventoryManager = new InventoryManager();
         this.indicatorManager = new AttackIndicatorManager(this.scene);
         this.areaManager = new AreaManager(this);
         this.markerManager = new MarkerManager(this);
@@ -27,7 +26,6 @@ class Game {
             startTime: Date.now(),
             paused: false,
             upgradesPending: 0,
-            inventoryOpen: false,
             atStash: false,
             stashOpen: false
         };
@@ -53,17 +51,19 @@ class Game {
         window.addEventListener("keydown", (e) => {
             const key = e.key.toLowerCase();
 
-            // Toggle inventory on I
+            // I opens the gear screen from anywhere. It used to open a second,
+            // legacy inventory over a separate item system — two screens
+            // showing unrelated loot. There is one gear view now.
             if (key === 'i') {
-                this.toggleInventory();
+                if (this.state.stashOpen) return;   // panel handles its own keys
+                this.openStash();
                 return;
             }
 
-            // Open the stash on E, but only while standing at it. Requiring a
-            // key press (unlike portals, which trigger on contact) means you
-            // can walk past your storage without being pulled into a menu.
+            // E does the same at the stash. Unlike a portal it needs a press,
+            // so walking past your storage never pulls you into a menu.
             if (key === 'e') {
-                if (this.areaManager && this.areaManager.isAtStash() && !this.state.inventoryOpen) {
+                if (this.areaManager && this.areaManager.isAtStash()) {
                     this.openStash();
                 }
                 return;
@@ -73,14 +73,8 @@ class Game {
             // keys; don't let ESC/P unpause the game behind it.
             if (this.state.stashOpen) return;
 
-            // Pause on ESC or P (but not if inventory is open)
             if (key === 'escape' || key === 'p') {
-                if (this.state.inventoryOpen) {
-                    // ESC closes inventory
-                    this.toggleInventory();
-                } else {
-                    this.togglePause();
-                }
+                this.togglePause();
                 return;
             }
         });
@@ -112,23 +106,11 @@ class Game {
         if (!this.openStashPanel) return;
         this.state.atStash = true;
         this.state.stashOpen = true;
-        if (this.ui.hideInteractionPrompt) this.ui.hideInteractionPrompt();
+        // Go through the prompt owner, not the UI directly, or activePrompt
+        // would still read 'stash' and the prompt would never come back when
+        // the panel closes with the player still standing there.
+        this.areaManager.clearInteractionPrompt();
         this.openStashPanel();
-    }
-
-    toggleInventory() {
-        this.state.inventoryOpen = !this.state.inventoryOpen;
-
-        if (this.state.inventoryOpen) {
-            // Open inventory and pause the game
-            this.state.paused = true;
-            this.ui.showInventory();
-        } else {
-            // Close inventory and unpause the game
-            this.state.paused = false;
-            this.state.atStash = false;
-            this.ui.hideInventory();
-        }
     }
 
 
@@ -302,36 +284,16 @@ class Game {
                 this.player.heal(value);
                 this.ui.updateHealthBar();
             },
-            // onItemCollected callback
+            // onItemCollected callback — every drop is sim-owned and already
+            // banked in the run bag, so collecting the mesh is purely visual.
             (item) => {
-                // Sim-owned drops are already in the run bag; collecting the
-                // mesh is purely cosmetic. Never re-add, or the item would
-                // exist twice.
-                if (item && item.fromSim) {
-                    if (this.ui.flashLoot) this.ui.flashLoot(item);
-                    return true;
-                }
-
-                const result = this.inventoryManager.addItem(item);
-
-                if (result === true) {
-                    this.ui.updateInventoryDisplay();
-                    return true;
-                }
-
-                if (result === 'destroyed') {
-                    this.ui.updateInventoryDisplay();
-                    return true;
-                }
-
-                return false;
+                if (this.ui.flashLoot) this.ui.flashLoot(item);
+                return true;
             },
             // onGoldCollected callback
             (value) => {
                 this.player.addGold(value);
             },
-            // inventoryFull flag
-            this.inventoryManager.isFull()
         );
     }
 

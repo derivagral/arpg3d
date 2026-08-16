@@ -16,6 +16,8 @@ import {
   runMetaFor,
   summarizeRun,
   hydrateProfile,
+  countUnseen,
+  highestUid,
   UPGRADES,
   ACHIEVEMENTS,
   BASE_POLICIES,
@@ -232,6 +234,59 @@ test('summarizeRun captures what the profile needs', () => {
   assert.equal(sum.depth, s.depth)
   assert.equal(sum.gold, s.player.gold)
   assert.deepEqual(sum.kills, s.player.kills)
+})
+
+// ── Banking accounting ───────────────────────────────────────────────────────
+
+test('awardRun COPIES the haul — every item is accounted for exactly once', () => {
+  // awardRun does not (and cannot) empty the run's bag, so the caller must.
+  // If it forgets, the same items sit in both the haul and the vault: they
+  // read as duplicated, and storing again would really duplicate them.
+  // stashed + overflow must therefore cover the input with no gaps or repeats.
+  const items = Array.from({ length: 5 }, (_, i) => ({ uid: i + 1, affixes: [] }))
+  const { profile, stashed, overflow } = awardRun(createProfile(), {
+    depth: 3, kills: {}, gold: 0, elapsed: 1, items,
+  })
+
+  const seen = [...stashed, ...overflow].map(i => i.uid).sort()
+  assert.deepEqual(seen, [1, 2, 3, 4, 5], 'no item lost or double-counted')
+  assert.equal(countUnseen(profile.stash, 0), 5, 'all five reached the vault')
+})
+
+test('a full vault leaves the overflow for the caller to keep', () => {
+  const full = { ...createProfile(), stash: new Array(240).fill({ uid: 0, affixes: [] }) }
+  const items = [{ uid: 1, affixes: [] }, { uid: 2, affixes: [] }]
+  const { stashed, overflow } = awardRun(full, {
+    depth: 1, kills: {}, gold: 0, elapsed: 1, items,
+  })
+  assert.equal(stashed.length, 0)
+  assert.deepEqual(overflow.map(i => i.uid), [1, 2], 'nothing is silently destroyed')
+})
+
+// ── New-item nudge bookkeeping ───────────────────────────────────────────────
+
+test('countUnseen only counts items above the seen watermark', () => {
+  const bag = [
+    { uid: 1 }, null, { uid: 4 }, { uid: 7 }, null,
+  ]
+  assert.equal(countUnseen(bag, 0), 3, 'nothing seen yet')
+  assert.equal(countUnseen(bag, 4), 1, 'only uid 7 is newer')
+  assert.equal(countUnseen(bag, 7), 0, 'all caught up')
+  assert.equal(countUnseen([], 0), 0)
+  assert.equal(countUnseen(undefined, 0), 0)
+})
+
+test('highestUid finds the watermark to acknowledge, never going backwards', () => {
+  const bag = [{ uid: 3 }, null, { uid: 9 }]
+  assert.equal(highestUid(bag, 0), 9)
+  assert.equal(highestUid([], 5), 5, 'an empty bag keeps the old watermark')
+  assert.equal(highestUid([{ uid: 2 }], 5), 5, 'older items never lower it')
+})
+
+test('the seen watermark persists through hydration', () => {
+  assert.equal(createProfile().seenItemUid, 0)
+  assert.equal(hydrateProfile({ seenItemUid: 12 }).seenItemUid, 12)
+  assert.equal(hydrateProfile({}).seenItemUid, 0)
 })
 
 // ── Hydration ────────────────────────────────────────────────────────────────

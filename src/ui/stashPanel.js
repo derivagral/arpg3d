@@ -1,10 +1,18 @@
 /**
- * src/ui/stashPanel.js — Bag ⇄ Stash ⇄ Equipment transfer screen
+ * src/ui/stashPanel.js — the Armory: Haul → Vault → Loadout
  *
- * Reads the CANONICAL sources directly: the run bag from SimState, the stash
- * and loadout from the character profile. It deliberately does not touch the
- * legacy InventoryManager — that path owns a second, unrelated set of items,
- * and mixing them is what made loot confusing in the first place.
+ * Terminology is deliberate, and deliberately not survival-looter:
+ *   Haul     what this run has turned up so far (run-scoped, lost on nothing,
+ *            banked automatically when the run ends)
+ *   Vault    the character's permanent collection
+ *   Loadout  what you are wearing. FIXED for the duration of a run.
+ *
+ * Because the loadout is static per run, equipping is a between-runs planning
+ * action and the Loadout column is READ-ONLY inside the combat zone — there is
+ * no action to offer there, so the screen doesn't pretend otherwise.
+ *
+ * Reads the canonical sources directly: the haul from SimState, the vault and
+ * loadout from the character profile.
  *
  * All mutations go through the pure helpers in sim/inventory.js and are handed
  * back to the host via callbacks, so this file owns no game state.
@@ -79,12 +87,13 @@ const css = `
 /**
  * @param {{
  *   getBag: () => (object|null)[],
+ *   canEquip: () => boolean,   — false while a run is in progress
  *   getProfile: () => object,
- *   onChange: (patch: { inventory?: (object|null)[], profile?: object }) => void,
+ *   onChange: (patch: { inventory?, equipment?, profile? }) => void,
  *   onClose?: () => void,
  * }} opts
  */
-export const createStashPanel = ({ getBag, getProfile, onChange, onClose }) => {
+export const createStashPanel = ({ getBag, canEquip, getProfile, onChange, onClose }) => {
   const style = document.createElement('style')
   style.textContent = css
   document.head.appendChild(style)
@@ -93,34 +102,32 @@ export const createStashPanel = ({ getBag, getProfile, onChange, onClose }) => {
   root.id = 'stashPanel'
   root.innerHTML = `
     <div class="sp-head">
-      <span class="sp-title">Stash</span>
-      <span class="sp-sub">Click an item to move it. Gear applies to your NEXT run.</span>
-      <span class="sp-close">ESC / E to close</span>
+      <span class="sp-title">Armory</span>
+      <span class="sp-sub" id="spSub"></span>
+      <span class="sp-close">ESC / I / E to close</span>
     </div>
     <div class="sp-body">
       <div class="sp-col">
-        <div class="sp-colhead"><span>Run Bag</span>
+        <div class="sp-colhead"><span>Haul</span>
           <span class="sp-count" id="spBagCount"></span>
-          <button class="sp-btn" id="spDepositAll">Deposit all →</button></div>
+          <button class="sp-btn" id="spDepositAll">Store all →</button></div>
         <div class="sp-grid" id="spBag"></div>
       </div>
       <div class="sp-col">
-        <div class="sp-colhead"><span>Stash</span>
+        <div class="sp-colhead"><span>Vault</span>
           <span class="sp-count" id="spStashCount"></span>
           <button class="sp-btn" id="spSort">Sort</button></div>
         <div class="sp-grid" id="spStash"></div>
       </div>
       <div class="sp-col">
-        <div class="sp-colhead"><span>Equipped</span>
+        <div class="sp-colhead"><span>Loadout</span>
           <span class="sp-count" id="spScore"></span>
-          <button class="sp-btn" id="spAuto">Auto</button></div>
+          <button class="sp-btn" id="spAuto">Best</button></div>
         <div class="sp-eq" id="spEquip"></div>
       </div>
     </div>
     <div class="sp-foot">
-      <span>Bag → click to stash</span>
-      <span>Stash → click to equip (best free slot)</span>
-      <span>Equipped → click to unstash</span>
+      <span id="spHints"></span>
       <span id="spNote"></span>
     </div>`
   document.body.appendChild(root)
@@ -180,6 +187,14 @@ export const createStashPanel = ({ getBag, getProfile, onChange, onClose }) => {
     const profile = getProfile()
     const stash = profile.stash
     const equipment = profile.equipment
+    const editable = canEquip ? canEquip() : true
+
+    $('spSub').textContent = editable
+      ? 'Gear is fixed once a run starts — set your loadout here.'
+      : 'Run in progress: your loadout is locked until you return.'
+    $('spHints').textContent = editable
+      ? 'Haul → click to store · Vault → click to equip · Loadout → click to remove'
+      : 'Haul → click to store · Vault and Loadout are locked mid-run'
 
     // Bag → stash
     const bagEl = $('spBag')
@@ -187,11 +202,11 @@ export const createStashPanel = ({ getBag, getProfile, onChange, onClose }) => {
     bag.forEach((item, i) => {
       bagEl.appendChild(cell(item, () => {
         const res = transfer(bag, stash, i)
-        if (!res.moved) { note = 'Stash is full.'; render(); return }
+        if (!res.moved) { note = 'Vault is full.'; render(); return }
         note = ''
         onChange({ inventory: res.from, profile: { ...profile, stash: res.to } })
         render()
-      }, 'Click → move to stash'))
+      }, 'Click → store in the vault'))
     })
     $('spBagCount').textContent = `${countItems(bag)} / ${bag.length}`
 
@@ -200,13 +215,14 @@ export const createStashPanel = ({ getBag, getProfile, onChange, onClose }) => {
     stashEl.innerHTML = ''
     stash.forEach((item, i) => {
       stashEl.appendChild(cell(item, () => {
+        if (!editable) { note = 'Return to base to change your loadout.'; render(); return }
         const target = bestSlotFor(item, equipment)
         const res = equipFrom(equipment, stash, i, target)
         if (!res.equipped) { note = `Cannot equip: ${res.reason}`; render(); return }
-        note = `Equipped ${itemName(res.equipped)} → ${SLOT_LABELS[target]} (next run)`
+        note = `Equipped ${itemName(res.equipped)} → ${SLOT_LABELS[target]}`
         onChange({ profile: { ...profile, equipment: res.equipment, stash: res.container } })
         render()
-      }, 'Click → equip (applies next run)'))
+      }, editable ? 'Click → equip' : 'Locked until you return to base'))
     })
     $('spStashCount').textContent = `${countItems(stash)} / ${stash.length}`
 
@@ -223,13 +239,15 @@ export const createStashPanel = ({ getBag, getProfile, onChange, onClose }) => {
         `<span class="sp-eqitem" style="color:${info ? info.color : '#4c5563'}">` +
         `${item ? itemName(item) : '—'}</span>`
       if (item) {
-        row.addEventListener('mouseenter', (e) => showTip(item, e, 'Click → return to stash'))
+        row.addEventListener('mouseenter', (e) =>
+          showTip(item, e, editable ? 'Click → return to the vault' : 'Locked until you return to base'))
         row.addEventListener('mousemove', moveTip)
         row.addEventListener('mouseleave', hideTip)
         row.addEventListener('click', () => {
           hideTip()
+          if (!editable) { note = 'Return to base to change your loadout.'; render(); return }
           const res = unequipTo(equipment, stash, slot)
-          if (!res.removed) { note = 'Stash is full.'; render(); return }
+          if (!res.removed) { note = 'Vault is full.'; render(); return }
           note = ''
           onChange({ profile: { ...profile, equipment: res.equipment, stash: res.container } })
           render()
@@ -253,7 +271,7 @@ export const createStashPanel = ({ getBag, getProfile, onChange, onClose }) => {
       if (!res.moved) break
       bag = res.from; stash = res.to; moved++
     }
-    note = moved ? `Deposited ${moved}.` : 'Nothing to deposit (or stash full).'
+    note = moved ? `Stored ${moved}.` : 'Nothing to store (or the vault is full).'
     onChange({ inventory: bag, profile: { ...profile, stash } })
     render()
   })
@@ -266,11 +284,12 @@ export const createStashPanel = ({ getBag, getProfile, onChange, onClose }) => {
   })
 
   $('spAuto').addEventListener('click', () => {
+    if (canEquip && !canEquip()) { note = 'Return to base to change your loadout.'; render(); return }
     const profile = getProfile()
     const res = autoEquip(profile.equipment, profile.stash)
     note = res.changes.length
-      ? `Equipped ${res.changes.length} upgrade(s) — applies next run.`
-      : 'Nothing in the stash beats what you have.'
+      ? `Equipped ${res.changes.length} upgrade(s).`
+      : 'Nothing in the vault beats what you have.'
     onChange({ profile: { ...profile, equipment: res.equipment, stash: res.container } })
     render()
   })
@@ -283,12 +302,13 @@ export const createStashPanel = ({ getBag, getProfile, onChange, onClose }) => {
   }
   root.querySelector('.sp-close').addEventListener('click', close)
 
-  // ESC or E closes. Captured so the legacy key handler (which would unpause
-  // on ESC) never sees it while the panel owns the screen.
+  // ESC, I or E closes — whichever key you opened it with also shuts it.
+  // Captured so the game's key handler (which would unpause on ESC) never
+  // sees it while the panel owns the screen.
   window.addEventListener('keydown', (e) => {
     if (!root.classList.contains('show')) return
     const k = e.key.toLowerCase()
-    if (k === 'escape' || k === 'e') {
+    if (k === 'escape' || k === 'e' || k === 'i') {
       e.preventDefault()
       e.stopPropagation()
       close()

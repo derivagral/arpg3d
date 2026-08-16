@@ -324,7 +324,7 @@ test('a geared run starts with the extra health its gear grants', () => {
   assert.equal(geared.player.hp, geared.player.maxHp)
 })
 
-test('gear cannot change mid-run', () => {
+test('a run never observes later profile changes', () => {
   const eq = createEquipment()
   eq.weapon = mkItem({ uid: 1 })
   const profile = { ...createProfile(), equipment: eq }
@@ -332,23 +332,35 @@ test('gear cannot change mid-run', () => {
 
   profile.equipment.weapon = mkItem({ uid: 2, affixes: [{ id: 'flat_dmg_2', delta: { flatDamage: 999 } }] })
   const after = tick(s, 16.67, { autopilot: false })
-  assert.equal(after.runMeta.equipment.weapon.uid, 1, 'run keeps its snapshot loadout')
+  assert.equal(after.runMeta.equipment.weapon.uid, 1, 'run keeps the loadout it started with')
 })
 
-// ── Persistence ──────────────────────────────────────────────────────────────
-
-test('run inventory and loadout survive a save round-trip', () => {
+test('the loadout is FIXED for the whole run', () => {
+  // Static-per-run is the roguelite contract: what you take in is what you
+  // fight with. There is deliberately no way to change gear mid-run, so the
+  // run's stats can never drift from the snapshot it was created with.
   const eq = createEquipment()
-  eq.weapon = mkItem({ uid: 1 })
-  let s = createState(4242, runMetaFor({ ...createProfile(), equipment: eq }))
-  for (let i = 0; i < 40000 && s.phase !== 'dead'; i++) {
-    s = tick(s, 16.67, { gateChoice: null, autopilot: true })
-  }
+  eq.weapon = mkItem({ uid: 1, affixes: [{ id: 'flat_dmg_2', delta: { flatDamage: 5 } }] })
+  let s = createState(9, runMetaFor({ ...createProfile(), equipment: eq }))
 
-  const { state: h } = hydrateSim(serializeSim(s))
-  assert.deepEqual(h.player.inventory, s.player.inventory)
-  assert.equal(h.nextUid, s.nextUid)
-  assert.deepEqual(h.runMeta.equipment, s.runMeta.equipment)
+  const expected = statsForRun(s.runMeta, []).flatDamage
+  assert.equal(expected, 5)
+
+  for (let i = 0; i < 500 && s.phase !== 'dead'; i++) {
+    s = tick(s, 16.67, { gateChoice: null, autopilot: true })
+    assert.equal(
+      statsForRun(s.runMeta, []).flatDamage, expected,
+      'gear contribution must not change while the run is alive'
+    )
+  }
+  assert.equal(s.runMeta.equipment.weapon.uid, 1)
+})
+
+test('the run carries no equipment of its own', () => {
+  // Gear lives on the profile and reaches a run only through runMeta. A
+  // second copy on the player would be a place for the two to disagree.
+  const s = createState(4)
+  assert.equal(s.player.equipment, undefined)
 })
 
 test('pre-item snapshots hydrate with an empty bag and no loadout', () => {

@@ -27,7 +27,7 @@ import { rollItemDrop } from './items.js'
 import { createInventory, addItem } from './inventory.js'
 import { calcDamage, aggregateDamageModifiers } from './damage.js'
 import { autoPickGate } from './autopilot.js'
-import { resolveMove, clampToArena } from './movement.js'
+import { resolveMove, clampToArena, ARENA_RADIUS } from './movement.js'
 
 export { BASE_PLAYER }
 
@@ -130,6 +130,8 @@ export const createState = (seed, runMeta = runMetaFor(createProfile())) => {
   // geared run begins under-healed: baseForRun() applies meta upgrades but
   // not equipment affixes, so gear-granted maxHp would be missed here and
   // only appear on the first tick, leaving hp clamped below the new max.
+  // Gear is fixed for the run: the loadout lives in the runMeta snapshot and
+  // never changes while the run is alive (docs/sim/items.md).
   const startStats = statsForRun(runMeta, [])
 
   return {
@@ -177,12 +179,13 @@ const spawnWave = (depth, rngState, startId) => {
     const type = types[typeIdx]
     const tmpl = ENEMY_TEMPLATES[type]
 
-    // Scatter around origin circle, radius 12-18 (inside ARENA_RADIUS)
+    // Scatter around origin in a ring, kept proportional to the arena so a
+    // wider arena doesn't spawn everything on top of the player.
     let angle, dist
     ;[angle, rng] = next(rng)
     ;[dist, rng] = next(rng)
     angle = angle * Math.PI * 2
-    dist = 12 + dist * 6
+    dist = ARENA_RADIUS * (0.6 + dist * 0.3)
 
     list.push({
       id: nextId++,
@@ -369,7 +372,7 @@ export const tick = (state, deltaMs, input = {}) => {
     if (nearest) {
       const dmgParams = {
         base: stats.damage,
-        ...aggregateDamageModifiers(allAffixes(s.runMeta, player.affixes)),
+        ...aggregateDamageModifiers(allAffixes(s.runMeta?.equipment, player.affixes)),
         rngState: rng
       }
       const [damage, nextRng, wasCrit] = calcDamage(dmgParams)

@@ -11,7 +11,7 @@ class AreaManager {
             homeBase: {
                 name: 'Home Base',
                 spawnEnemies: false,
-                groundSize: 40,
+                groundSize: 46,   // +15%
                 cameraHeight: 30,
                 groundColor: new BABYLON.Color3(0.3, 0.5, 0.3), // Darker green
                 lighting: {
@@ -34,14 +34,14 @@ class AreaManager {
                     position: new BABYLON.Vector3(0, 0.75, 10),
                     color: new BABYLON.Color3(0.25, 0.55, 1.0),      // blue, vs the red portal
                     glowColor: new BABYLON.Color3(0.5, 0.8, 1.0),
-                    label: 'Stash',
-                    hint: 'Press E — store and equip gear'
+                    label: 'Armory',
+                    hint: 'Press E — store loot and set your loadout'
                 }
             },
             mobArea: {
                 name: 'Combat Zone',
                 spawnEnemies: true,
-                groundSize: 60,
+                groundSize: 69,   // +15% — mirrors ARENA_RADIUS in sim/movement.js
                 cameraHeight: 30,
                 groundColor: new BABYLON.Color3(0.2, 0.6, 0.2), // Current green
                 lighting: {
@@ -65,6 +65,8 @@ class AreaManager {
 
         this.portals = [];
         this.stash = null;
+        // Key of whatever the interaction prompt is currently showing, or null.
+        this.activePrompt = null;
         this.areaTimer = null;
         this.areaTimerElapsed = 0;
         this.returnPortalSpawned = false;
@@ -112,6 +114,12 @@ class AreaManager {
             this.stopMobAreaTimer();
         }
 
+        // Tell the host, which binds the sim run's lifecycle to this: entering
+        // the combat zone starts a run, returning home ends it. That mapping is
+        // what makes "your loadout is fixed for the run" a coherent rule —
+        // home base is the only place gear can change, and it is a real place.
+        if (this.game.onAreaChanged) this.game.onAreaChanged(areaName);
+
         // Show transition message
         this.game.ui.showWaveIndicator(`Entering ${area.name}`);
 
@@ -142,6 +150,10 @@ class AreaManager {
 
         this.game.sceneManager.ground = ground;
         this.game.sceneManager.groundSize = area.groundSize;
+        // Player clamping reads this; without it the bounds stayed on the
+        // global CONFIG.world default and the smaller home base wasn't
+        // enclosed at all.
+        this.game.currentGroundSize = area.groundSize;
 
         // Update lighting
         if (this.game.sceneManager.hemisphericLight) {
@@ -209,23 +221,10 @@ class AreaManager {
             return;
         }
 
-        // Quadrant-dividing cross through the origin so the four zones read clearly
-        // (and line up with the four objective markers).
-        const barLength = groundSize * 0.92;
-        const makeBar = (width, depth) => {
-            const bar = BABYLON.MeshBuilder.CreateBox('quadBar', {
-                width, height: 0.05, depth
-            }, scene);
-            bar.position = new BABYLON.Vector3(0, 0.15, 0);
-            const mat = new BABYLON.StandardMaterial('quadBarMat', scene);
-            mat.diffuseColor = new BABYLON.Color3(0.22, 0.28, 0.22);
-            mat.emissiveColor = new BABYLON.Color3(0.05, 0.08, 0.05);
-            mat.specularColor = new BABYLON.Color3(0, 0, 0);
-            bar.material = mat;
-            this.areaTiles.push(bar);
-        };
-        makeBar(barLength, 0.3); // east-west divider
-        makeBar(0.3, barLength); // north-south divider
+        // No quadrant cross: the explicit divider read as a UI overlay painted
+        // on the ground rather than terrain, and it fought the objective
+        // markers for attention. The per-quadrant clusters below already imply
+        // the same four zones without drawing lines through the play space.
 
         // Sparse, deliberate decoration: a small cluster per quadrant rather than
         // random scatter across the whole map.
@@ -250,14 +249,14 @@ class AreaManager {
         // Spawn area portals
         if (area.portals && area.portals.length > 0) {
             area.portals.forEach(portalConfig => {
+                // Spread the whole config: picking out individual fields here
+                // silently dropped label/hint, so prompts fell back to showing
+                // the raw destination id ('mobArea').
                 const portal = new Portal(
                     this.game.scene,
                     portalConfig.position,
                     portalConfig.destination,
-                    {
-                        color: portalConfig.color,
-                        glowColor: portalConfig.glowColor
-                    }
+                    { ...portalConfig }
                 );
                 this.portals.push(portal);
             });
@@ -329,7 +328,9 @@ class AreaManager {
                 radius: 2.5,
                 height: 5,
                 color: new BABYLON.Color3(0.3, 1.0, 0.3), // Green portal
-                glowColor: new BABYLON.Color3(0.5, 1.0, 0.5)
+                glowColor: new BABYLON.Color3(0.5, 1.0, 0.5),
+                label: 'Home Base',
+                hint: 'Walk in to return'
             }
         );
 
@@ -351,9 +352,11 @@ class AreaManager {
         // Update home-base stash
         if (this.stash) this.stash.update(deltaTime);
 
-        // Check portal interactions
+        // Prompt first, then interactions — a transition inside
+        // checkPortalInteractions() disposes this area's portals, and the next
+        // frame's reconcile is what clears the prompt.
+        this.updateInteractionPrompt();
         this.checkPortalInteractions();
-        this.checkStashInteraction();
 
         // Update mob area timer
         this.updateMobAreaTimer(deltaTime);
@@ -362,49 +365,68 @@ class AreaManager {
     checkPortalInteractions() {
         const playerPos = this.game.player.mesh.position;
 
-        this.portals.forEach(portal => {
-            if (portal.checkPlayerInteraction(playerPos)) {
-                if (!portal.interactionHintShown) {
-                    const label = portal.config.label || portal.destination;
-                    const hint = portal.config.hint || 'Walk in to travel';
-                    this.game.ui.showInteractionPrompt(label, hint, '#ff8a8a');
-                    portal.interactionHintShown = true;
-                }
-
-                // Auto-transition when player is very close (or you can add a key press)
-                const distance = BABYLON.Vector3.Distance(playerPos, portal.position);
-                if (distance < 1.5) {
-                    this.transitionToArea(portal.destination);
-                }
-            } else if (portal.interactionHintShown) {
-                this.game.ui.hideInteractionPrompt();
-                portal.interactionHintShown = false;
+        // Snapshot: transitionToArea() replaces this.portals mid-iteration.
+        for (const portal of [...this.portals]) {
+            if (!portal.checkPlayerInteraction(playerPos)) continue;
+            if (BABYLON.Vector3.Distance(playerPos, portal.position) < 1.5) {
+                this.transitionToArea(portal.destination);
+                return;   // this area is gone; stop touching its portals
             }
-        });
+        }
     }
 
     /**
-     * Proximity prompt for the stash. Unlike a portal this never triggers on
-     * contact — walking past your storage should not open a menu — so it only
-     * advertises the key. Game.handleKeyDown routes the actual press.
+     * Reconcile the world-interaction prompt from scratch each frame.
+     *
+     * Previously each portal/stash carried its own "prompt shown" flag and was
+     * responsible for hiding it. Walking into a portal disposes every portal in
+     * the area, so the object holding the flag disappeared before it could hide
+     * anything and the prompt stranded on screen forever (visible as a
+     * permanent 'mobArea' label after travelling). Deriving the prompt from
+     * current world state instead means a source that vanishes simply stops
+     * being found, and the prompt clears on its own.
      */
-    checkStashInteraction() {
-        if (!this.stash) {
-            if (this.stashPromptShown) {
-                this.game.ui.hideInteractionPrompt();
-                this.stashPromptShown = false;
+    updateInteractionPrompt() {
+        const playerPos = this.game.player.mesh.position;
+        let next = null;
+
+        // Stash wins over portals: it needs a keypress, so if you're standing
+        // in both you want to be told about the one that won't move you.
+        if (this.stash && this.stash.checkPlayerInteraction(playerPos)) {
+            next = {
+                key: 'stash',
+                label: this.stash.config.label,
+                hint: this.stash.config.hint,
+                color: '#7fb8ff'
+            };
+        } else {
+            for (const portal of this.portals) {
+                if (!portal.checkPlayerInteraction(playerPos)) continue;
+                next = {
+                    key: 'portal:' + portal.destination,
+                    label: portal.config.label || portal.destination,
+                    hint: portal.config.hint || 'Walk in to travel',
+                    color: '#ff8a8a'
+                };
+                break;
             }
-            return;
         }
 
-        const inRange = this.stash.checkPlayerInteraction(this.game.player.mesh.position);
-        if (inRange && !this.stashPromptShown) {
-            this.game.ui.showInteractionPrompt(this.stash.config.label, this.stash.config.hint,
-                '#7fb8ff');
-            this.stashPromptShown = true;
-        } else if (!inRange && this.stashPromptShown) {
+        if (!next) {
+            this.clearInteractionPrompt();
+            return;
+        }
+        if (this.activePrompt !== next.key) {
+            this.game.ui.showInteractionPrompt(next.label, next.hint, next.color);
+            this.activePrompt = next.key;
+        }
+    }
+
+    clearInteractionPrompt() {
+        if (!this.activePrompt) return;
+        this.activePrompt = null;
+        if (this.game.ui && this.game.ui.hideInteractionPrompt) {
             this.game.ui.hideInteractionPrompt();
-            this.stashPromptShown = false;
         }
     }
 
@@ -453,14 +475,23 @@ class AreaManager {
             this.game.markerManager.clear();
         }
 
-        // Clear all enemies
-        if (this.game.enemies) {
-            this.game.enemies.forEach(enemy => {
+        // Clear all enemies.
+        //
+        // This used to write `this.game.enemies = []`, but game.enemies is an
+        // ALIAS captured once in the Game constructor — reassigning it left
+        // game.state.enemies (what the loop actually iterates) untouched, so
+        // the horde followed the player home, kept attacking, and kept
+        // dropping orbs in the base. Mutate the real array in place.
+        const enemies = this.game.state.enemies;
+        if (enemies) {
+            enemies.forEach(enemy => {
                 if (enemy.mesh) enemy.mesh.dispose();
                 if (enemy.healthBar) enemy.healthBar.dispose();
+                if (enemy.dispose) enemy.dispose();
             });
-            this.game.enemies = [];
+            enemies.length = 0;          // in place: keeps every alias valid
         }
+        this.game.simDropQueue.length = 0;   // drops belonged to that area
 
         // Clear all projectiles
         if (this.game.projectileManager) {
@@ -484,10 +515,9 @@ class AreaManager {
 
         // Clear home-base fixtures
         if (this.stash) { this.stash.dispose(); this.stash = null; }
-        if (this.stashPromptShown && this.game.ui) {
-            this.game.ui.hideInteractionPrompt();
-            this.stashPromptShown = false;
-        }
+
+        // Every prompt source in this area is now gone.
+        this.clearInteractionPrompt();
     }
 
     getCurrentArea() {

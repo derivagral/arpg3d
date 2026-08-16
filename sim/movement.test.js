@@ -121,6 +121,25 @@ test('engagement slots cap simultaneous attackers', () => {
   assert.equal(s.enemies.length, 20, 'crowded enemies still persist')
 })
 
+test('no policy can stall a run forever', () => {
+  // A moving player is strictly faster than 'basic' and 'tank', so a policy
+  // that always travels can outrun the stragglers it needs to kill: the wave
+  // never clears and the run sits at one depth indefinitely. Patrol did
+  // exactly that when the arena was widened. Every policy must either die or
+  // keep making progress.
+  for (const policy of Object.keys(MOVE_POLICIES)) {
+    let s = createState(31337, META_ALL)
+    const startDepth = s.depth
+    for (let i = 0; i < 30000 && s.phase !== 'dead'; i++) {
+      s = tick(s, 16.67, { gateChoice: null, autopilot: true, movePolicy: policy })
+    }
+    assert.ok(
+      s.phase === 'dead' || s.depth > startDepth + 6,
+      `'${policy}' neither died nor progressed (stuck at depth ${s.depth})`
+    )
+  }
+})
+
 test('movement policy materially changes run outcome', () => {
   const runTo = (policy) => {
     let s = createState(31337, META_ALL)

@@ -28,6 +28,8 @@
 import { createState, tick, isRunOver } from '../../../sim/engine.js'
 import { MOVE_POLICIES } from '../../../sim/movement.js'
 import {
+  createInventory,
+  addItems,
   autoEquip as autoEquipItems,
   equipFrom,
   unequipTo,
@@ -38,6 +40,8 @@ import {
 } from '../../../sim/inventory.js'
 import { itemName, itemScore, rarityInfo, SLOTS } from '../../../sim/items.js'
 import {
+  countUnseen,
+  highestUid,
   awardRun,
   summarizeRun,
   runMetaFor,
@@ -48,6 +52,7 @@ import {
   upgradeCost,
 } from '../../../sim/profile.js'
 import { createStashPanel } from '../../ui/stashPanel.js'
+import { createNotices } from '../../ui/notices.js'
 
 // Re-exported so a game module is self-describing when imported directly.
 // The shell reads manifest.js instead, to avoid importing all of this.
@@ -108,6 +113,10 @@ export async function mount(container, host) {
   // never reads it directly — it only ever sees the runMeta snapshot taken
   // when a run starts.
   let profile = await store.getProfile(slotId)
+  // Guards double-banking when death and a portal home land together. Starts
+  // true so the initial home-base transition can't bank a run that never ran
+  // (rather than relying on Game's constructor ordering).
+  let runBanked = true
 
   // Player-level preferences the shell owns. Read once at mount: settings
   // changing mid-run is a shell concern, not something the game watches.
@@ -117,8 +126,27 @@ export async function mount(container, host) {
   // Reads the canonical sources (sim bag, profile stash/loadout) and hands
   // mutations back here. The legacy inventory screen (I) is a separate, older
   // surface over the legacy item system; this one is the real thing.
+  // HUD nudges. Only the inventory channel exists today — see src/ui/notices.js
+  // for why buff/combat channels are deliberately not here yet.
+  const notices = createNotices()
+  const refreshItemNotice = () => {
+    const unseen = countUnseen(simState.player.inventory, profile.seenItemUid ?? 0)
+    notices.set('inventory', unseen, () => game.openStashPanel())
+  }
+  // Opening the gear screen IS the acknowledgement — no separate dismiss.
+  const markItemsSeen = () => {
+    const top = highestUid(simState.player.inventory, profile.seenItemUid ?? 0)
+    if (top !== (profile.seenItemUid ?? 0)) {
+      profile = { ...profile, seenItemUid: top }
+      persist()
+    }
+    refreshItemNotice()
+  }
+
   const stashPanel = createStashPanel({
     getBag: () => simState.player.inventory,
+    // Loadout is a between-runs decision: locked while a run is live.
+    canEquip: () => !(game.areaManager && game.areaManager.isInCombatArea()),
     getProfile: () => profile,
     onChange: ({ inventory, profile: nextProfile }) => {
       if (inventory) {
@@ -133,7 +161,62 @@ export async function mount(container, host) {
       game.state.stashOpen = false
     },
   })
+  // Fold the current run into the character and stop it. Safe to call twice.
+  const bankRun = (reason) => {
+    if (runBanked) return
+    runBanked = true
+    const { profile: earned, echoes, unlocked, stashed, overflow } =
+      awardRun(profile, summarizeRun(simState))
+    profile = earned
+    persist()
+
+    // Client-reported and unverifiable by construction — see host/telemetry.js.
+    host.telemetry?.report('run.ended', {
+      depth: simState.depth,
+      echoes: echoes.total,
+      newRecord: echoes.pb > 0,
+      reason,
+    })
+    console.log(`[run] ${reason} at depth ${simState.depth} → +${echoes.total} echoes` +
+      (echoes.pb > 0 ? ` (${echoes.pb} from a new record)` : '') +
+      ` | ${profile.echoes} banked`)
+    for (const a of unlocked) {
+      console.log(`[unlocked] ${a.name} — ${a.desc}${a.grants ? ` → ${a.grants}` : ''}`)
+    }
+    // Empty the haul of everything that actually banked. awardRun() COPIES
+    // items into the vault; without this the same items stay in the haul and
+    // show up in both columns — which reads as duplicated loot, and a
+    // subsequent "Store all" would genuinely duplicate them in the vault.
+    // Anything that didn't fit stays in the haul rather than vanishing, so
+    // the player can make room.
+    simState = {
+      ...simState,
+      player: { ...simState.player, inventory: addItems(createInventory(), overflow).container },
+    }
+    persist()
+
+    if (stashed.length) console.log(`[vault] +${stashed.length} items`)
+    if (overflow.length) {
+      console.warn(`[vault] FULL — ${overflow.length} item(s) stayed in your haul; make room.`)
+    }
+    refreshItemNotice()
+  }
+
+  game.onAreaChanged = (areaName) => {
+    if (areaName === 'mobArea') {
+      // A fresh run, wearing whatever you just chose at home base.
+      simState = createState(Date.now(), runMetaFor(profile))
+      runBanked = false
+      persist()
+      refreshItemNotice()
+    } else {
+      bankRun('returned home')
+    }
+    if (stashPanel.refresh) stashPanel.refresh()
+  }
+
   game.openStashPanel = () => {
+    markItemsSeen()
     game.state.paused = true
     game.state.stashOpen = true
     stashPanel.open()
@@ -218,6 +301,9 @@ export async function mount(container, host) {
   // This one runs first (registration order). Both coexist safely.
   game.scene.registerBeforeRender(() => {
     if (game.state.paused) return
+    // The sim run IS the combat zone. At home base there is no run to advance,
+    // which is what makes the loadout you pick there the loadout you take in.
+    if (!game.areaManager || !game.areaManager.isInCombatArea()) return
 
     const deltaMs = engine.getDeltaTime()
     const input = { ...pendingInput, move: pendingInput.move ?? readMoveKeys() }
@@ -226,6 +312,7 @@ export async function mount(container, host) {
 
     const prevPhase = simState.phase
     const prevLogLen = simState.log.length
+    let newDrops = false
     simState = tick(simState, deltaMs, input)
 
     // Hand any new sim item drops to the render layer so it can show a pickup
@@ -236,7 +323,9 @@ export async function mount(container, host) {
       if (ev.type !== 'item_drop') continue
       const item = (simState.player.inventory ?? []).find(it => it && it.uid === ev.payload.uid)
       if (item) game.simDropQueue.push({ ...item, fromSim: true, rarityConfig: rarityMesh(item.rarity) })
+      newDrops = true
     }
+    if (newDrops) refreshItemNotice()
 
     // Sync key sim stats → legacy render layer so UI reflects sim state
     syncSimToRender(simState, game)
@@ -249,33 +338,12 @@ export async function mount(container, host) {
     // Run ended: fold it into the character profile (echoes, record depth,
     // lifetime stats, achievement unlocks), persist, then start a fresh run
     // from a NEW meta snapshot so purchases and unlocks take effect.
+    // Death ends the run and sends you home, where the next loadout is
+    // chosen. Previously this silently rolled a fresh run in place, which
+    // gave the player no moment to re-gear between attempts.
     if (isRunOver(simState)) {
-      const summary = summarizeRun(simState)
-      const { profile: earned, echoes, unlocked, stashed, overflow } = awardRun(profile, summary)
-      profile = earned
-      persist()
-
-      // Client-reported and unverifiable by construction — see host/telemetry.js.
-      host.telemetry?.report('run.ended', {
-        depth: simState.depth,
-        echoes: echoes.total,
-        newRecord: echoes.pb > 0,
-      })
-
-      console.log(
-        `[run] depth ${simState.depth} → +${echoes.total} echoes` +
-        (echoes.pb > 0 ? ` (${echoes.pb} from a new record)` : '') +
-        ` | ${profile.echoes} banked`
-      )
-      for (const a of unlocked) {
-        console.log(`[unlocked] ${a.name} — ${a.desc}${a.grants ? ` → ${a.grants}` : ''}`)
-      }
-      if (stashed.length) console.log(`[stash] +${stashed.length} items (${countItems(profile.stash)} stored)`)
-      if (overflow.length) {
-        console.warn(`[stash] FULL — ${overflow.length} item(s) could not be stored and were lost.`)
-      }
-
-      simState = createState(Date.now(), runMetaFor(profile))
+      bankRun('died')
+      if (game.areaManager) game.areaManager.transitionToArea('homeBase')
     }
   })
 

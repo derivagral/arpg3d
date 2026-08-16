@@ -8,7 +8,7 @@ could not be simulated faithfully and replays would diverge. The render layer
 draws `player.x` / `player.z`; it never owns them.
 
 ## Arena
-Combat happens in a disc of `ARENA_RADIUS` (20) centred on the origin.
+Combat happens in a disc of `ARENA_RADIUS` (23) centred on the origin.
 Bounds are what make kiting a skill rather than an exploit — you cannot
 outrun a swarm forever. `clampToArena(x, z)` is the single funnel for player
 position, so no policy can escape.
@@ -45,7 +45,7 @@ strongest option, to leave that progression headroom.
 |----------|--------------------------------------------------------|
 | `hold`   | Stand and fight. Maximum damage taken — the floor.     |
 | `center` | Walk back to the middle and hold. Default.            |
-| `patrol` | Circuit four cardinal waypoints, dragging the swarm.  |
+| `patrol` | Circuit four cardinal waypoints, dragging the swarm; hunts the nearest enemy once nothing is within `PATROL_ENGAGE_RADIUS`. |
 | `kite`   | Flee the local threat centroid with a tangential bias so the escape path curves instead of pinning you to the wall. |
 
 Measured spread (autopilot gate picks, 7 seeds, death depth):
@@ -54,14 +54,34 @@ Measured spread (autopilot gate picks, 7 seeds, death depth):
 |----------|-------------|
 | `hold`   | 4           |
 | `center` | 4           |
-| `patrol` | 17–23       |
-| `kite`   | 22–24+      |
+| `patrol` | 18–24       |
+| `kite`   | 23–24+      |
 
 That ~5x gap is the point: movement is the single largest lever on run
 outcome, which is what makes an unlockable movement ladder worth having.
 (Figures are with no meta upgrades; a bought-out board pushes kite to ~50.)
 Policies are earned through achievements — see docs/sim/profile.md — and the
 engine clamps `input.movePolicy` to what the run actually unlocked.
+
+## Runs must never stall
+A moving player is strictly faster than `basic` (0.06) and `tank` (0.035), so
+a policy that *always* travels can never be caught by the stragglers it needs
+to kill: the wave never clears, the run never ends, and the whole meta loop
+freezes. Widening the arena from 20 to 23 triggered exactly this — `patrol`
+sat at depth 5 for 16 simulated minutes.
+
+`patrol` therefore circles only while something is within
+`PATROL_ENGAGE_RADIUS` (8); once it has outrun everything it turns and closes
+on the nearest enemy. Circling is what strings enemies out (fewer in melee at
+once, which is why patrol beats `hold`), and hunting is what guarantees the
+wave ends.
+
+Two failed attempts are worth recording: a hunt-when-few-remain threshold
+still stalled (it just stalled later, with 5+ tanks trailing), and
+"stand still whenever anything is in range" collapsed patrol into `hold`
+(depth 4) because the pile catches up the moment you stop.
+
+`sim/movement.test.js` asserts every policy either dies or keeps progressing.
 
 ## Balance premise: speed is a tradeoff, not immunity
 Enemy speeds are balanced against `BASE_PLAYER.speed` (0.15):
