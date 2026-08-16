@@ -16,6 +16,8 @@ import {
   runMetaFor,
   summarizeRun,
   hydrateProfile,
+  countUnseen,
+  highestUid,
   UPGRADES,
   ACHIEVEMENTS,
   BASE_POLICIES,
@@ -232,6 +234,32 @@ test('summarizeRun captures what the profile needs', () => {
   assert.equal(sum.depth, s.depth)
   assert.equal(sum.gold, s.player.gold)
   assert.deepEqual(sum.kills, s.player.kills)
+})
+
+// ── New-item nudge bookkeeping ───────────────────────────────────────────────
+
+test('countUnseen only counts items above the seen watermark', () => {
+  const bag = [
+    { uid: 1 }, null, { uid: 4 }, { uid: 7 }, null,
+  ]
+  assert.equal(countUnseen(bag, 0), 3, 'nothing seen yet')
+  assert.equal(countUnseen(bag, 4), 1, 'only uid 7 is newer')
+  assert.equal(countUnseen(bag, 7), 0, 'all caught up')
+  assert.equal(countUnseen([], 0), 0)
+  assert.equal(countUnseen(undefined, 0), 0)
+})
+
+test('highestUid finds the watermark to acknowledge, never going backwards', () => {
+  const bag = [{ uid: 3 }, null, { uid: 9 }]
+  assert.equal(highestUid(bag, 0), 9)
+  assert.equal(highestUid([], 5), 5, 'an empty bag keeps the old watermark')
+  assert.equal(highestUid([{ uid: 2 }], 5), 5, 'older items never lower it')
+})
+
+test('the seen watermark persists through hydration', () => {
+  assert.equal(createProfile().seenItemUid, 0)
+  assert.equal(hydrateProfile({ seenItemUid: 12 }).seenItemUid, 12)
+  assert.equal(hydrateProfile({}).seenItemUid, 0)
 })
 
 // ── Hydration ────────────────────────────────────────────────────────────────

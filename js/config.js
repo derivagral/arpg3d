@@ -105,6 +105,15 @@ const CONFIG = {
             enemyStatIncrease: 0.03        // +3% enemy HP/damage per interval
         },
 
+        // Advance to the next wave as soon as the field is clear, instead of
+        // standing in an empty arena waiting out the wave timer.
+        // minWaveMs is a grace period so a lull between spawns isn't read as
+        // a clear; the wave must also have spawned at least one enemy.
+        clearedWaveAdvance: {
+            enabled: true,
+            minWaveMs: 3000
+        },
+
         // Wave configuration (can be customized per wave below)
         waves: null  // Will use CONFIG.waves if not overridden
     },

@@ -42,12 +42,42 @@ Behaviour that exists in both layers today, and must be changed in both:
 | Surround limit | `ENGAGEMENT_SLOTS` | `CONFIG.combat.engagementSlots` |
 | Enemy/player balance stats | `ENEMY_TEMPLATES`, `BASE_PLAYER` | `CONFIG.enemies.types`, `CONFIG.player` |
 | Container sizes | `INVENTORY_SIZE`, `STASH_SIZE` | `CONFIG.inventory` |
+| Arena size | `ARENA_RADIUS` (23) | `areaManager` `groundSize` (69 / 46) |
 
 **Items are no longer mirrored** — the sim is the sole source. It rolls every
 drop and banks it; the render layer only *displays* drops drained from the
 sim's `item_drop` log events into `game.simDropQueue`. See docs/sim/items.md.
 
 `sim/` is canonical: when they disagree, sim wins and the legacy config follows.
+
+## Wave pacing
+The legacy wave system advances when its timer expires **or** as soon as the
+field is clear (`CONFIG.spawn.clearedWaveAdvance`), so a cleared arena doesn't
+leave the player waiting out the clock. Early advance requires that the wave
+actually spawned something and that a short grace period has passed, so the
+gap before the first spawn — and a lull between spawns — aren't mistaken for
+a clear. The sim's own loop already advances immediately on wave clear.
+
+## Notices (nudges)
+`src/ui/notices.js` is a channel-based HUD rail in the bottom-right. A
+*channel* is one persistent thing worth acting on; it owns a badge and can
+flash when its value changes.
+
+Two levels of loudness, kept separate on purpose:
+- **badge** — persistent state ("3 new"). Truthful, never animated.
+- **flash** — a one-shot pulse when the value *rises*. Attention, not state.
+
+A badge that animates forever becomes wallpaper; a flash that persists becomes
+clutter. `set()` only flashes when the count actually increases, so
+re-rendering the same state never nags.
+
+Only the `inventory` channel exists today, counting run-bag items with a uid
+above `profile.seenItemUid`. Opening the gear screen *is* the acknowledgement
+— there is no separate dismiss — and the watermark persists, so the badge
+survives a reload. Buff timers and combat alerts are deliberately absent:
+they are transient, they compete with the action, and they want positioning
+near the player rather than a corner rail. The module is shaped to take them
+as channels when that content exists.
 
 ## Input flow
 Manual movement is an **input to the sim**, not a render-layer behaviour:

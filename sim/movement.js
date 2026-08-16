@@ -21,8 +21,11 @@
  */
 
 /** Combat arena is a disc centred on the origin. Bounds make kiting a skill
- *  rather than an exploit — you cannot outrun a swarm forever. */
-export const ARENA_RADIUS = 20
+ *  rather than an exploit — you cannot outrun a swarm forever.
+ *  Mirrored by CONFIG/areaManager groundSize in the render layer. Widening
+ *  this makes kiting stronger, so re-run the policy sweep after changing it
+ *  (docs/sim/movement.md). */
+export const ARENA_RADIUS = 23
 
 const PATROL_RADIUS = ARENA_RADIUS * 0.6
 
@@ -36,6 +39,8 @@ export const PATROL_POINTS = [
 
 const WAYPOINT_REACHED = 1.5
 const THREAT_RADIUS = 6
+/** Patrol hunts once nothing is within this radius — see the policy comment. */
+const PATROL_ENGAGE_RADIUS = 8
 const RECENTER_DEADZONE = 0.5
 
 /** Policy used when none is specified — naive "hold the middle". */
@@ -73,8 +78,30 @@ export const MOVE_POLICIES = {
     return [x, z, player.waypoint]
   },
 
-  // Circuit four fixed waypoints, dragging the swarm behind you.
-  patrol: (player) => {
+  // Circuit four fixed waypoints, dragging the swarm behind you. The circuit
+  // is what makes patrol good: enemies string out along the path instead of
+  // arriving as one pile, so fewer of them are ever in melee at once.
+  //
+  // The catch is stragglers. A moving player is strictly faster than 'basic'
+  // and 'tank', so a continuous circuit can NEVER be caught by them — the last
+  // few enemies are chased forever, the wave never clears, and the run stalls
+  // (observed: depth 5 held for 16 minutes once the arena was widened). So
+  // once the wave is nearly done, patrol closes on the nearest enemy instead
+  // of circling past it. Hunting only when few remain keeps the stringing-out
+  // behaviour for the part of the wave where it matters.
+  patrol: (player, enemies = []) => {
+    // Engaged → keep circling (that's what strings them out).
+    // Disengaged → you have outrun the pack; go and find it.
+    let nearest = null, nearestD = Infinity
+    for (const e of enemies) {
+      const d = Math.hypot(player.x - e.x, player.z - e.z)
+      if (d < nearestD) { nearestD = d; nearest = e }
+    }
+    if (nearest && nearestD > PATROL_ENGAGE_RADIUS) {
+      const [x, z] = norm(nearest.x - player.x, nearest.z - player.z)
+      return [x, z, player.waypoint]
+    }
+
     const wp = PATROL_POINTS[player.waypoint % PATROL_POINTS.length]
     const dx = wp.x - player.x
     const dz = wp.z - player.z
@@ -87,7 +114,7 @@ export const MOVE_POLICIES = {
 
   // Flee the local threat centroid, with a tangential bias so the escape
   // path curves around the arena instead of pinning you against the wall.
-  kite: (player, enemies) => {
+  kite: (player, enemies = []) => {
     let ax = 0, az = 0, threats = 0
     for (const e of enemies) {
       const dx = player.x - e.x

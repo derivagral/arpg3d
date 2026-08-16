@@ -31,6 +31,10 @@ class SpawnManager {
         // Wave state
         this.currentWave = 1;
         this.waveStartTime = Date.now();
+        // How many enemies this wave has put on the field. Needed so an empty
+        // field at the START of a wave (before anything spawns) doesn't
+        // instantly skip it.
+        this.spawnedThisWave = 0;
         this.lastSpawnTime = 0;
 
         // Spawn patterns
@@ -62,7 +66,7 @@ class SpawnManager {
         }
 
         // Update wave system
-        this.updateWaveSystem(currentTime);
+        this.updateWaveSystem(currentTime, enemies);
 
         // Process spawn events (future feature)
         this.processSpawnEvents(currentTime);
@@ -78,16 +82,35 @@ class SpawnManager {
     /**
      * Update wave progression
      */
-    updateWaveSystem(currentTime) {
+    updateWaveSystem(currentTime, enemies = []) {
         const waveConfig = this.getWaveConfig();
         const waveElapsed = currentTime - this.waveStartTime;
 
-        // Check for wave transition
+        // Timer expired — the normal transition.
         if (waveElapsed > waveConfig.duration) {
-            this.currentWave++;
-            this.waveStartTime = currentTime;
-            this.onWaveComplete();
+            this.advanceWave(currentTime);
+            return;
         }
+
+        // Field cleared early — don't make the player stand in an empty arena
+        // waiting out the clock. Requires that this wave actually spawned
+        // something (otherwise the gap before the first spawn would skip the
+        // wave instantly) and a short grace period so a lull between spawns
+        // isn't mistaken for a clear.
+        const cfg = (CONFIG.spawn && CONFIG.spawn.clearedWaveAdvance) || {};
+        if (cfg.enabled === false) return;
+        const grace = cfg.minWaveMs != null ? cfg.minWaveMs : 3000;
+        if (enemies.length === 0 && this.spawnedThisWave > 0 && waveElapsed > grace) {
+            this.advanceWave(currentTime, true);
+        }
+    }
+
+    /** Move to the next wave and reset per-wave bookkeeping. */
+    advanceWave(currentTime, cleared = false) {
+        this.currentWave++;
+        this.waveStartTime = currentTime;
+        this.spawnedThisWave = 0;
+        this.onWaveComplete(cleared);
     }
 
     /**
@@ -112,6 +135,7 @@ class SpawnManager {
 
             if (enemy) {
                 enemies.push(enemy);
+                this.spawnedThisWave++;
             }
         }
     }
@@ -488,9 +512,13 @@ class SpawnManager {
     /**
      * Wave completion callback
      */
-    onWaveComplete() {
+    onWaveComplete(cleared = false) {
         // Hook for future features (wave completion bonuses, etc.)
-        console.log(`Wave ${this.currentWave - 1} complete! Starting wave ${this.currentWave}`);
+        console.log(`Wave ${this.currentWave - 1} ${cleared ? 'CLEARED' : 'complete'}!`
+            + ` Starting wave ${this.currentWave}`);
+        if (cleared && this.game.ui && this.game.ui.showWaveIndicator) {
+            this.game.ui.showWaveIndicator(`Wave cleared — wave ${this.currentWave}`);
+        }
     }
 
     /**

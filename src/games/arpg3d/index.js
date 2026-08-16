@@ -38,6 +38,8 @@ import {
 } from '../../../sim/inventory.js'
 import { itemName, itemScore, rarityInfo, SLOTS } from '../../../sim/items.js'
 import {
+  countUnseen,
+  highestUid,
   awardRun,
   summarizeRun,
   runMetaFor,
@@ -48,6 +50,7 @@ import {
   upgradeCost,
 } from '../../../sim/profile.js'
 import { createStashPanel } from '../../ui/stashPanel.js'
+import { createNotices } from '../../ui/notices.js'
 
 // Re-exported so a game module is self-describing when imported directly.
 // The shell reads manifest.js instead, to avoid importing all of this.
@@ -117,6 +120,23 @@ export async function mount(container, host) {
   // Reads the canonical sources (sim bag, profile stash/loadout) and hands
   // mutations back here. The legacy inventory screen (I) is a separate, older
   // surface over the legacy item system; this one is the real thing.
+  // HUD nudges. Only the inventory channel exists today — see src/ui/notices.js
+  // for why buff/combat channels are deliberately not here yet.
+  const notices = createNotices()
+  const refreshItemNotice = () => {
+    const unseen = countUnseen(simState.player.inventory, profile.seenItemUid ?? 0)
+    notices.set('inventory', unseen, () => game.openStashPanel())
+  }
+  // Opening the gear screen IS the acknowledgement — no separate dismiss.
+  const markItemsSeen = () => {
+    const top = highestUid(simState.player.inventory, profile.seenItemUid ?? 0)
+    if (top !== (profile.seenItemUid ?? 0)) {
+      profile = { ...profile, seenItemUid: top }
+      persist()
+    }
+    refreshItemNotice()
+  }
+
   const stashPanel = createStashPanel({
     getBag: () => simState.player.inventory,
     getProfile: () => profile,
@@ -134,6 +154,7 @@ export async function mount(container, host) {
     },
   })
   game.openStashPanel = () => {
+    markItemsSeen()
     game.state.paused = true
     game.state.stashOpen = true
     stashPanel.open()
@@ -226,6 +247,7 @@ export async function mount(container, host) {
 
     const prevPhase = simState.phase
     const prevLogLen = simState.log.length
+    let newDrops = false
     simState = tick(simState, deltaMs, input)
 
     // Hand any new sim item drops to the render layer so it can show a pickup
@@ -236,7 +258,9 @@ export async function mount(container, host) {
       if (ev.type !== 'item_drop') continue
       const item = (simState.player.inventory ?? []).find(it => it && it.uid === ev.payload.uid)
       if (item) game.simDropQueue.push({ ...item, fromSim: true, rarityConfig: rarityMesh(item.rarity) })
+      newDrops = true
     }
+    if (newDrops) refreshItemNotice()
 
     // Sync key sim stats → legacy render layer so UI reflects sim state
     syncSimToRender(simState, game)
@@ -276,6 +300,7 @@ export async function mount(container, host) {
       }
 
       simState = createState(Date.now(), runMetaFor(profile))
+      refreshItemNotice()   // the bag just emptied into the stash
     }
   })
 

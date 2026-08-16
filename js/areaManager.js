@@ -11,7 +11,7 @@ class AreaManager {
             homeBase: {
                 name: 'Home Base',
                 spawnEnemies: false,
-                groundSize: 40,
+                groundSize: 46,   // +15%
                 cameraHeight: 30,
                 groundColor: new BABYLON.Color3(0.3, 0.5, 0.3), // Darker green
                 lighting: {
@@ -41,7 +41,7 @@ class AreaManager {
             mobArea: {
                 name: 'Combat Zone',
                 spawnEnemies: true,
-                groundSize: 60,
+                groundSize: 69,   // +15% — mirrors ARENA_RADIUS in sim/movement.js
                 cameraHeight: 30,
                 groundColor: new BABYLON.Color3(0.2, 0.6, 0.2), // Current green
                 lighting: {
@@ -209,23 +209,10 @@ class AreaManager {
             return;
         }
 
-        // Quadrant-dividing cross through the origin so the four zones read clearly
-        // (and line up with the four objective markers).
-        const barLength = groundSize * 0.92;
-        const makeBar = (width, depth) => {
-            const bar = BABYLON.MeshBuilder.CreateBox('quadBar', {
-                width, height: 0.05, depth
-            }, scene);
-            bar.position = new BABYLON.Vector3(0, 0.15, 0);
-            const mat = new BABYLON.StandardMaterial('quadBarMat', scene);
-            mat.diffuseColor = new BABYLON.Color3(0.22, 0.28, 0.22);
-            mat.emissiveColor = new BABYLON.Color3(0.05, 0.08, 0.05);
-            mat.specularColor = new BABYLON.Color3(0, 0, 0);
-            bar.material = mat;
-            this.areaTiles.push(bar);
-        };
-        makeBar(barLength, 0.3); // east-west divider
-        makeBar(0.3, barLength); // north-south divider
+        // No quadrant cross: the explicit divider read as a UI overlay painted
+        // on the ground rather than terrain, and it fought the objective
+        // markers for attention. The per-quadrant clusters below already imply
+        // the same four zones without drawing lines through the play space.
 
         // Sparse, deliberate decoration: a small cluster per quadrant rather than
         // random scatter across the whole map.

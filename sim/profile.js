@@ -186,6 +186,9 @@ export const createProfile = () => ({
   achievements: [],
   stash: createStash(),
   equipment: createEquipment(),
+  // Highest item uid the player has actually looked at. Anything above it is
+  // "new" and worth nudging about. Persisted so the badge survives a reload.
+  seenItemUid: 0,
 })
 
 /** Movement policies this profile may use. */
@@ -207,6 +210,18 @@ export const runMetaFor = (profile) => ({
   // enters a run only here, so gear cannot change mid-run.
   equipment: hydrateEquipment(profile?.equipment),
 })
+
+/**
+ * Items in a container the player hasn't looked at yet.
+ * @param {(object|null)[]} container
+ * @param {number} seenItemUid
+ */
+export const countUnseen = (container = [], seenItemUid = 0) =>
+  container.reduce((n, it) => n + (it && it.uid > seenItemUid ? 1 : 0), 0)
+
+/** Highest uid present, for marking everything in a container as seen. */
+export const highestUid = (container = [], floor = 0) =>
+  container.reduce((max, it) => (it && it.uid > max ? it.uid : max), floor)
 
 /** Condense a finished run into what the profile cares about. */
 export const summarizeRun = (state) => ({
@@ -307,5 +322,6 @@ export const hydrateProfile = (raw) => {
     achievements: [...(raw.achievements ?? [])],
     stash: hydrateContainer(raw.stash, STASH_SIZE),
     equipment: hydrateEquipment(raw.equipment),
+    seenItemUid: raw.seenItemUid ?? 0,
   }
 }

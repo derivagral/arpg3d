@@ -27,7 +27,7 @@ import { rollItemDrop } from './items.js'
 import { createInventory, addItem } from './inventory.js'
 import { calcDamage, aggregateDamageModifiers } from './damage.js'
 import { autoPickGate } from './autopilot.js'
-import { resolveMove, clampToArena } from './movement.js'
+import { resolveMove, clampToArena, ARENA_RADIUS } from './movement.js'
 
 export { BASE_PLAYER }
 
@@ -177,12 +177,13 @@ const spawnWave = (depth, rngState, startId) => {
     const type = types[typeIdx]
     const tmpl = ENEMY_TEMPLATES[type]
 
-    // Scatter around origin circle, radius 12-18 (inside ARENA_RADIUS)
+    // Scatter around origin in a ring, kept proportional to the arena so a
+    // wider arena doesn't spawn everything on top of the player.
     let angle, dist
     ;[angle, rng] = next(rng)
     ;[dist, rng] = next(rng)
     angle = angle * Math.PI * 2
-    dist = 12 + dist * 6
+    dist = ARENA_RADIUS * (0.6 + dist * 0.3)
 
     list.push({
       id: nextId++,
